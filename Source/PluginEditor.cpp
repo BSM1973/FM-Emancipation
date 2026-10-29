@@ -92,6 +92,6 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(output, 1190, 819, 100, 100);
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
-        fit(levels[i], 1020 + 69*i, 151, 54, 92);
+        fit(levels[i], 85 + 238*i, 561, 66, 174);
     }
 }
