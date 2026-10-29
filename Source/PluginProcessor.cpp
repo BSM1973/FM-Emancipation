@@ -139,7 +139,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
     }
 }
-juce::String FMEmancipationAudioProcessor::getProgramName(int index)
+const juce::String FMEmancipationAudioProcessor::getProgramName(int index)
 {
     static const char* families[] = {
         "Electric Piano", "Bell", "Bass", "Lead", "Pad",
