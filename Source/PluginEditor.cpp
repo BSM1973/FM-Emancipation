@@ -157,6 +157,117 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> triggerAttachments;
 };
 
+
+class FMDualModulationEnvelopePanel final : public juce::Component
+{
+public:
+    explicit FMDualModulationEnvelopePanel(FMEmancipationAudioProcessor& processor)
+    {
+        setSize(1004, 428);
+        static constexpr const char* suffixes[] = { "Attack", "Decay", "Sustain", "Release", "Amount" };
+        for (int e = 0; e < 2; ++e) {
+            const auto base = "modEnv" + juce::String(e + 1);
+            for (int j = 0; j < 5; ++j) {
+                auto& slider = controls[(size_t)e][(size_t)j];
+                slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 68, 18);
+                slider.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff78c9fa));
+                slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff34566c));
+                slider.setColour(juce::Slider::thumbColourId, juce::Colour(0xffe3f6ff));
+                slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffc4e5ff));
+                slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+                slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+                slider.onValueChange = [this] { repaint(); };
+                addAndMakeVisible(slider);
+                sliderAttachments.push_back(
+                    std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                        processor.parameters, base + suffixes[j], slider));
+            }
+            auto& target = destinations[(size_t)e];
+            target.addItemList({ "Desactivee", "Hauteur", "Profondeur FM",
+                                 "Profondeur AM", "Niveau", "Feedback" }, 1);
+            target.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+            target.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+            target.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+            target.setTooltip("Destination de l'enveloppe : modulation polyphonique par note");
+            addAndMakeVisible(target);
+            targetAttachments.push_back(
+                std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+                    processor.parameters, base + "Target", target));
+        }
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(0xff192b3a));
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(23.0f, juce::Font::bold));
+        g.drawText("ENVELOPPES DE MODULATION", 24, 14, 820, 34, juce::Justification::left);
+        g.setColour(juce::Colour(0xff9ebfd5));
+        g.setFont(juce::FontOptions(12.0f));
+        g.drawText("Deux ADSR independantes des six operateurs  /  declenchement polyphonique MIDI",
+                   24, 53, 940, 20, juce::Justification::left);
+        static constexpr const char* labels[] = { "ATTAQUE", "DECAY", "SUSTAIN", "RELEASE", "INTENSITE" };
+        for (int e = 0; e < 2; ++e) {
+            const int top = 85 + e * 157;
+            g.setColour(juce::Colour(e == 0 ? 0xff223c4e : 0xff213648));
+            g.fillRoundedRectangle(14.0f, (float)top, 976.0f, 151.0f, 6.0f);
+            g.setColour(juce::Colour(0xff46657c));
+            g.drawRoundedRectangle(14.0f, (float)top, 976.0f, 151.0f, 6.0f, 1.0f);
+            g.setColour(e == 0 ? juce::Colour(0xff70d6f5) : juce::Colour(0xff9cb3ff));
+            g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+            g.drawText("ENV " + juce::String(e + 1), 31, top + 48, 100, 30, juce::Justification::left);
+            g.setColour(juce::Colour(0xffb5c6d6));
+            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            for (int j = 0; j < 5; ++j)
+                g.drawText(labels[j], 143 + j * 108, top + 9, 92, 20, juce::Justification::centred);
+            g.drawText("DESTINATION", 740, top + 24, 215, 22, juce::Justification::centred);
+
+            // Miniature of the actual ADSR shape from the current settings.
+            const float attack = (float)controls[(size_t)e][0].getValue();
+            const float decay = (float)controls[(size_t)e][1].getValue();
+            const float sustain = (float)controls[(size_t)e][2].getValue();
+            const float release = (float)controls[(size_t)e][3].getValue();
+            const float total = attack + decay + 0.35f + release;
+            const float startX = 151.0f, y = (float)top + 140.0f;
+            const float graphWidth = 515.0f, graphHeight = 24.0f;
+            const float atX = startX + graphWidth * attack / total;
+            const float decX = atX + graphWidth * decay / total;
+            const float susX = decX + graphWidth * 0.35f / total;
+            juce::Path curve;
+            curve.startNewSubPath(startX, y);
+            curve.lineTo(atX, y - graphHeight);
+            curve.lineTo(decX, y - graphHeight * sustain);
+            curve.lineTo(susX, y - graphHeight * sustain);
+            curve.lineTo(startX + graphWidth, y);
+            g.setColour(juce::Colour(0xff405d71));
+            g.drawLine(startX, y, startX + graphWidth, y, 1.0f);
+            g.setColour(e == 0 ? juce::Colour(0xff70d6f5) : juce::Colour(0xff9cb3ff));
+            g.strokePath(curve, juce::PathStrokeType(1.6f));
+        }
+        g.setColour(juce::Colour(0xffa8c5d8));
+        g.setFont(juce::FontOptions(12.0f));
+        g.drawText("Intensite : -100 % a +100 %  |  Les nouvelles enveloppes sont desactivees par defaut.",
+                   22, 402, 950, 20, juce::Justification::left);
+    }
+
+    void resized() override
+    {
+        for (int e = 0; e < 2; ++e) {
+            const int top = 85 + e * 157;
+            for (int j = 0; j < 5; ++j)
+                controls[(size_t)e][(size_t)j].setBounds(147 + j * 108, top + 31, 84, 80);
+            destinations[(size_t)e].setBounds(742, top + 60, 215, 34);
+        }
+    }
+
+private:
+    std::array<std::array<juce::Slider, 5>, 2> controls;
+    std::array<juce::ComboBox, 2> destinations;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> targetAttachments;
+};
+
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processor(p)
 {
@@ -237,6 +348,15 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             getLocalArea(&lfoPhaseModeButton, lfoPhaseModeButton.getLocalBounds()), this);
     };
     addAndMakeVisible(lfoPhaseModeButton);
+    modulationEnvelopesButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    modulationEnvelopesButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    modulationEnvelopesButton.setTooltip("Ouvrir les deux ADSR independantes de modulation");
+    modulationEnvelopesButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<FMDualModulationEnvelopePanel>(processor),
+            getLocalArea(&modulationEnvelopesButton, modulationEnvelopesButton.getLocalBounds()), this);
+    };
+    addAndMakeVisible(modulationEnvelopesButton);
     updateLfoSourceVisibility();
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
@@ -544,6 +664,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(lfoDestination, 914, 846, 151, 31);
     fit(lfoSourceSelector, 526, 780, 112, 28);
     fit(lfoPhaseModeButton, 662, 780, 146, 28);
+    fit(modulationEnvelopesButton, 826, 780, 150, 28);
     fit(lfo2Waveform, 311, 846, 116, 31);
     fit(lfo2Rate, 447, 832, 105, 80);
     fit(lfo2Sync, 563, 846, 99, 31);
