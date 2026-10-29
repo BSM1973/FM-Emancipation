@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include <algorithm>
+#include <cmath>
 
 // Separate dark-blue modulation matrix: displayed only when requested.
 // All 24 controls attach directly to the processor's persistent parameters.
@@ -268,6 +269,7 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     setSize(1496, 990);
     setResizable(true, true);
     setResizeLimits(900, 650, 2200, 1500);
+    startTimerHz(20); // Refresh only the dual-LFO display area.
 }
 void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
 {
@@ -367,9 +369,70 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawText("DESTINATION", 914, 812, 151, 17, juce::Justification::centred);
     g.setColour(juce::Colour(0xff8ba6bc));
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    // Live LFO 1 + LFO 2 preview. The shape and amplitude are read directly
+    // from APVTS parameters and the phase cursor from lock-free DSP snapshots.
+    const auto drawLfoPreview = [&](int index) {
+        const bool second = index == 1;
+        const juce::String prefix = second ? "lfo2" : "lfo";
+        const auto getParam = [&](const juce::String& key) {
+            return processor.parameters.getRawParameterValue(key)->load();
+        };
+        const int shape = juce::jlimit(0, 3, (int)std::lround(getParam(prefix + "Wave")));
+        const float depth = juce::jlimit(0.0f, 1.0f, getParam(prefix + "Depth"));
+        const float phase = juce::jlimit(0.0f, 1.0f, processor.getLfoPhaseForDisplay(index));
+        const float y = second ? 865.0f : 808.0f;
+        const juce::Colour accent = second ? juce::Colour(0xff9cb3ff) : juce::Colour(0xff70d6f5);
+        g.setColour(juce::Colour(0xff172b3a));
+        g.fillRoundedRectangle(1305.0f, y, 150.0f, 51.0f, 4.0f);
+        g.setColour(juce::Colour(0xff405b70));
+        g.drawRoundedRectangle(1305.0f, y, 150.0f, 51.0f, 4.0f, 1.0f);
+        g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+        g.setColour(accent);
+        g.drawText(second ? "LFO 2" : "LFO 1", 1313, (int)y + 3, 70, 15, juce::Justification::left);
+        g.setColour(juce::Colour(0xffc4e5ff));
+        g.drawText(juce::String(juce::roundToInt(depth * 100.0f)) + " %",
+                   1390, (int)y + 3, 57, 15, juce::Justification::right);
+
+        const float left = 1315.0f, width = 130.0f;
+        const float midline = y + 35.0f;
+        const float amplitude = 12.0f * depth;
+        g.setColour(juce::Colour(0xff37576b));
+        g.drawLine(left, midline, left + width, midline, 1.0f);
+        juce::Path curve;
+        for (int point = 0; point <= 96; ++point) {
+            const double cycle = (double)point / 96.0;
+            double value = std::sin(juce::MathConstants<double>::twoPi * cycle);
+            if (shape == 1) value = 1.0 - 4.0 * std::abs(cycle - 0.5);
+            else if (shape == 2) value = 2.0 * cycle - 1.0;
+            else if (shape == 3) value = cycle < 0.5 ? 1.0 : -1.0;
+            const float x = left + width * (float)cycle;
+            const float waveY = midline - amplitude * (float)value;
+            if (point == 0) curve.startNewSubPath(x, waveY);
+            else curve.lineTo(x, waveY);
+        }
+        g.setColour(accent);
+        g.strokePath(curve, juce::PathStrokeType(1.6f));
+        const float cursorX = left + width * phase;
+        g.setColour(juce::Colour(0xffe3f6ff).withAlpha(0.8f));
+        g.drawLine(cursorX, y + 20.0f, cursorX, y + 48.0f, 1.0f);
+    };
+    drawLfoPreview(0);
+    drawLfoPreview(1);
+    g.setColour(juce::Colour(0xff8ba6bc));
+    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     g.drawText("MASTER OUTPUT", 1030, 785, 400, 20, juce::Justification::left);
     g.drawText("FM EMANCIPATION  /  SIX-OPERATOR FM-AM SYNTHESIZER", 30, 934, 800, 20, juce::Justification::left);
 }
+void FMEmancipationAudioProcessorEditor::timerCallback()
+{
+    // The waveform previews live at the right of the modulation section.
+    const auto scaled = juce::Rectangle<float>(1304.0f, 806.0f, 154.0f, 112.0f)
+        .transformedBy(juce::AffineTransform::scale(getWidth() / 1496.0f,
+                                                    getHeight() / 990.0f))
+        .getSmallestIntegerContainer();
+    repaint(scaled);
+}
+
 void FMEmancipationAudioProcessorEditor::resized()
 {
     auto fit = [&](juce::Component& s, int x, int y, int w, int h) {
