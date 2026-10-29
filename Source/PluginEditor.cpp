@@ -682,6 +682,98 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAttachments;
 };
 
+
+class FMArpeggiatorPanel final : public juce::Component, private juce::Timer
+{
+public:
+    explicit FMArpeggiatorPanel(FMEmancipationAudioProcessor& processor)
+        : synth(processor)
+    {
+        setSize(780, 372);
+        auto combo = [&](juce::ComboBox& box, const juce::String& id,
+                         const juce::StringArray& values) {
+            box.addItemList(values, 1);
+            box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+            box.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+            box.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+            addAndMakeVisible(box);
+            combos.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+                synth.parameters, id, box));
+        };
+        combo(enabled, "arpEnabled", { "DÉSACTIVÉ", "ACTIVÉ" });
+        combo(mode, "arpMode", { "MONTANT", "DESCENDANT", "ALLER / RETOUR", "ALÉATOIRE", "ACCORDS" });
+        combo(division, "arpDivision", { "1 MESURE", "1/2", "1/4", "1/8", "1/16", "1/32", "1/8 TRIOLET" });
+        combo(octaves, "arpOctaves", { "1 OCTAVE", "2 OCTAVES", "3 OCTAVES", "4 OCTAVES" });
+        for (int i = 0; i < 2; ++i) {
+            auto& knob = i == 0 ? swing : gate;
+            knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 78, 20);
+            knob.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff70d6f5));
+            knob.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff37576b));
+            knob.setColour(juce::Slider::thumbColourId, juce::Colour(0xffd4f2ff));
+            knob.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffc4e5ff));
+            knob.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+            knob.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+            addAndMakeVisible(knob);
+            sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                synth.parameters, i == 0 ? "arpSwing" : "arpGate", knob));
+        }
+        swing.setTooltip("Décale un pas sur deux pour créer un rythme swing");
+        gate.setTooltip("Longueur des notes entre 5 % et 100 % de chaque pas");
+        startTimerHz(15);
+    }
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(0xff192b3a));
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(24.0f, juce::Font::bold));
+        g.drawText("ARPÉGIATEUR", 22, 14, 620, 38, juce::Justification::left);
+        g.setFont(juce::FontOptions(12.0f));
+        g.setColour(juce::Colour(0xffafc9dc));
+        g.drawText("Synchronisé au tempo du DAW  •  Notes MIDI maintenues  •  Jusqu'à 4 octaves",
+                   22, 54, 720, 22, juce::Justification::left);
+        g.setColour(juce::Colour(0xff223c4e));
+        g.fillRoundedRectangle(16.0f, 90.0f, 748.0f, 211.0f, 7.0f);
+        g.setColour(juce::Colour(0xff4b708a));
+        g.drawRoundedRectangle(16.0f, 90.0f, 748.0f, 211.0f, 7.0f, 1.0f);
+        g.setColour(juce::Colour(0xffc4e5ff));
+        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+        g.drawText("MARCHE", 34, 107, 132, 20, juce::Justification::centred);
+        g.drawText("DIRECTION", 192, 107, 210, 20, juce::Justification::centred);
+        g.drawText("DIVISION", 431, 107, 138, 20, juce::Justification::centred);
+        g.drawText("OCTAVES", 600, 107, 140, 20, juce::Justification::centred);
+        g.drawText("SWING", 243, 178, 112, 20, juce::Justification::centred);
+        g.drawText("GATE", 450, 178, 112, 20, juce::Justification::centred);
+        g.setColour(juce::Colour(0xff70d6f5));
+        g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+        const int note = synth.getArpNoteForDisplay();
+        g.drawText(note >= 0 ? "NOTE : " + juce::MidiMessage::getMidiNoteName(note, true, true, 3)
+                             : "NOTE : —", 34, 224, 166, 32, juce::Justification::left);
+        g.setColour(juce::Colour(0xff9ebbd0));
+        g.setFont(juce::FontOptions(12.0f));
+        g.drawText("Sans note enfoncée, l'arpégiateur reste silencieux. Désactiver restaure le MIDI normal.",
+                   24, 317, 720, 22, juce::Justification::left);
+        g.drawText("Les réglages sont sauvegardés avec les presets et automatisables dans le DAW.",
+                   24, 342, 720, 20, juce::Justification::left);
+    }
+    void resized() override
+    {
+        enabled.setBounds(33, 134, 134, 32);
+        mode.setBounds(194, 134, 210, 32);
+        division.setBounds(433, 134, 138, 32);
+        octaves.setBounds(600, 134, 140, 32);
+        swing.setBounds(246, 201, 106, 88);
+        gate.setBounds(452, 201, 106, 88);
+    }
+private:
+    void timerCallback() override { repaint(24, 222, 180, 37); }
+    FMEmancipationAudioProcessor& synth;
+    juce::ComboBox enabled, mode, division, octaves;
+    juce::Slider swing, gate;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> combos;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliders;
+};
+
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processor(p)
 {
@@ -789,6 +881,15 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             getLocalArea(&effectsButton, effectsButton.getLocalBounds()), this);
     };
     addAndMakeVisible(effectsButton);
+    arpeggiatorButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    arpeggiatorButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    arpeggiatorButton.setTooltip("Ouvrir l'arpégiateur MIDI synchronisé au tempo");
+    arpeggiatorButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<FMArpeggiatorPanel>(processor),
+            getLocalArea(&arpeggiatorButton, arpeggiatorButton.getLocalBounds()), this);
+    };
+    addAndMakeVisible(arpeggiatorButton);
     updateLfoSourceVisibility();
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
@@ -1058,7 +1159,7 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
     drawLfoPreview(1);
     g.setColour(juce::Colour(0xff8ba6bc));
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText("MASTER OUTPUT", 1193, 785, 265, 20, juce::Justification::left);
+    g.drawText("MASTER OUTPUT", 1315, 785, 146, 20, juce::Justification::left);
     g.drawText("FM EMANCIPATION  /  SIX-OPERATOR FM-AM SYNTHESIZER", 30, 934, 800, 20, juce::Justification::left);
 }
 void FMEmancipationAudioProcessorEditor::timerCallback()
@@ -1099,6 +1200,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(modulationEnvelopesButton, 826, 780, 150, 28);
     fit(filterButton, 992, 780, 102, 28);
     fit(effectsButton, 1102, 780, 83, 28);
+    fit(arpeggiatorButton, 1194, 780, 105, 28);
     fit(lfo2Waveform, 311, 846, 116, 31);
     fit(lfo2Rate, 447, 832, 105, 80);
     fit(lfo2Sync, 563, 846, 99, 31);

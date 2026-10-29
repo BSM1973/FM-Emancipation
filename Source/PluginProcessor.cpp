@@ -76,6 +76,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
         f(prefix + "Delay", prefix + " delay feedback", -1.0f, 1.0f, 0.0f);
         f(prefix + "Reverb", prefix + " reverb wet", -1.0f, 1.0f, 0.0f);
     }
+    // Polyphonic input arpeggiator: bypassed by default for all older sessions.
+    f("arpEnabled", "Arpeggiator enabled", 0.0f, 1.0f, 0.0f);
+    f("arpMode", "Arpeggiator direction", 0.0f, 4.0f, 0.0f);
+    f("arpDivision", "Arpeggiator rate division", 0.0f, 6.0f, 2.0f);
+    f("arpGate", "Arpeggiator gate", 0.05f, 1.0f, 0.7f);
+    f("arpSwing", "Arpeggiator swing", 0.0f, 1.0f, 0.0f);
+    f("arpOctaves", "Arpeggiator octaves", 1.0f, 4.0f, 1.0f);
     // The LFO defaults to OFF and does not alter existing sessions.
     f("lfoWave", "LFO waveform", 0.0f, 3.0f, 0.0f);
     f("lfoRate", "LFO free rate (Hz)", 0.05f, 20.0f, 5.0f);
@@ -174,6 +181,13 @@ void FMEmancipationAudioProcessor::prepareToPlay(double sr, int maximumExpectedS
 {
     rate = sr > 0 ? sr : 44100.0;
     voices = {};
+    for (auto& channel : arpHeldVelocities) channel.fill(0.0f);
+    arpPlayingCount = 0;
+    arpStepCountdown = arpGateCountdown = 0.0;
+    arpStepCounter = 0;
+    arpRandomState = 0x7a9e3d21u;
+    arpWasEnabled = false;
+    arpDisplayNote.store(-1, std::memory_order_relaxed);
     pitchBendSemitones.fill(0.0);
     lfoPhases.fill(0.0);
     for (auto& phase : lfoDisplayPhases) phase.store(0.0f, std::memory_order_relaxed);
@@ -223,6 +237,12 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const double depth = param("fmDepth");
     const double am = param("amDepth");
     const double output = param("output");
+    const bool arpEnabled = param("arpEnabled") >= 0.5f;
+    const int arpMode = juce::jlimit(0, 4, (int)std::lround(param("arpMode")));
+    const int arpDivision = juce::jlimit(0, 6, (int)std::lround(param("arpDivision")));
+    const int arpOctaves = juce::jlimit(1, 4, (int)std::lround(param("arpOctaves")));
+    const double arpGate = param("arpGate");
+    const double arpSwing = param("arpSwing");
     const double attack = param("attack");
     const double release = param("release");
     const int filterMode = juce::jlimit(0, 6, (int)std::lround(param("filterMode")));
@@ -345,6 +365,46 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         matrix2FM[i] = param("lfo2OpFM" + op);
         matrix2Feedback[i] = param("lfo2OpFeedback" + op);
     }
+    // The same voice commands are used by normal MIDI input and generated
+    // arpeggiator notes. No MIDI allocations are made in the audio callback.
+    const auto startVoice = [&](int note, int channel, float velocity) {
+        Voice* slot = nullptr;
+        for (auto& v : voices) if (v.note < 0) { slot = &v; break; }
+        if (!slot) slot = &voices[0]; // deterministic oldest-slot fallback
+        *slot = {};
+        slot->note = note;
+        slot->midiChannel = juce::jlimit(1, 16, channel);
+        slot->velocity = velocity;
+    };
+    const auto releaseVoice = [&](int note, int channel) {
+        for (auto& v : voices)
+            if (v.note == note && v.midiChannel == channel) v.releasing = true;
+    };
+    const auto releaseArpNotes = [&] {
+        for (int i = 0; i < arpPlayingCount; ++i)
+            releaseVoice(arpPlaying[(size_t)i].pitch, arpPlaying[(size_t)i].channel);
+        arpPlayingCount = 0;
+        arpDisplayNote.store(-1, std::memory_order_relaxed);
+    };
+
+    if (arpEnabled != arpWasEnabled) {
+        // Switches between direct MIDI and arpeggiation never retain a stale
+        // note or a previous chord. New incoming note-ons start a fresh phrase.
+        releaseArpNotes();
+        for (auto& v : voices) if (v.note >= 0) v.releasing = true;
+        for (auto& channel : arpHeldVelocities) channel.fill(0.0f);
+        arpStepCountdown = arpGateCountdown = 0.0;
+        arpStepCounter = 0;
+        arpWasEnabled = arpEnabled;
+    }
+
+    // Periods in quarter-note units: 1 bar through 1/32 plus triplets.
+    static constexpr double arpBeatsPerStep[] {
+        4.0, 2.0, 1.0, 0.5, 0.25, 0.125, 1.0 / 3.0
+    };
+    const double baseArpStepSamples = juce::jmax(1.0,
+        rate * 60.0 * arpBeatsPerStep[arpDivision] / juce::jmax(20.0, hostBpm));
+
     juce::MidiBuffer::Iterator iterator(midi);
     juce::MidiMessage message;
     int eventSample = 0;
@@ -354,24 +414,107 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         const double currentResonance = resonanceSmoother.getNextValue();
         const double currentFilterMix = filterMixSmoother.getNextValue();
         while (hasEvent && eventSample <= s) {
+            const int channel = juce::jlimit(1, 16, message.getChannel());
             if (message.isNoteOn()) {
-                Voice* slot = nullptr;
-                for (auto& v : voices) if (v.note < 0) { slot = &v; break; }
-                if (!slot) slot = &voices[0];
-                *slot = {};
-                slot->note = message.getNoteNumber();
-                slot->midiChannel = message.getChannel();
-                slot->velocity = message.getFloatVelocity();
+                if (arpEnabled) {
+                    bool anyHeld = false;
+                    for (const auto& heldChannel : arpHeldVelocities)
+                        for (float velocity : heldChannel)
+                            if (velocity > 0.0f) { anyHeld = true; break; }
+                    arpHeldVelocities[(size_t)(channel - 1)][(size_t)message.getNoteNumber()] =
+                        message.getFloatVelocity();
+                    if (!anyHeld) {
+                        arpStepCountdown = 0.0; // start new phrase without a delayed first note
+                        arpStepCounter = 0;
+                    }
+                } else {
+                    startVoice(message.getNoteNumber(), channel, message.getFloatVelocity());
+                }
             } else if (message.isNoteOff()) {
-                for (auto& v : voices)
-                    if (v.note == message.getNoteNumber() && v.midiChannel == message.getChannel()) v.releasing = true;
+                if (arpEnabled) {
+                    arpHeldVelocities[(size_t)(channel - 1)][(size_t)message.getNoteNumber()] = 0.0f;
+                    bool anyHeld = false;
+                    for (const auto& heldChannel : arpHeldVelocities)
+                        for (float velocity : heldChannel)
+                            if (velocity > 0.0f) { anyHeld = true; break; }
+                    if (!anyHeld) {
+                        releaseArpNotes();
+                        arpStepCountdown = arpGateCountdown = 0.0;
+                    }
+                } else {
+                    releaseVoice(message.getNoteNumber(), channel);
+                }
             } else if (message.isPitchWheel()) {
-                const int channel = juce::jlimit(1, 16, message.getChannel()) - 1;
-                pitchBendSemitones[(size_t)channel] = (message.getPitchWheelValue() - 8192) * (2.0 / 8192.0);
+                pitchBendSemitones[(size_t)(channel - 1)] =
+                    (message.getPitchWheelValue() - 8192) * (2.0 / 8192.0);
             } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
+                for (auto& heldChannel : arpHeldVelocities) heldChannel.fill(0.0f);
                 for (auto& v : voices) v = {};
+                arpPlayingCount = 0;
+                arpStepCountdown = arpGateCountdown = 0.0;
+                arpDisplayNote.store(-1, std::memory_order_relaxed);
             }
             hasEvent = iterator.getNextEvent(message, eventSample);
+        }
+        if (arpEnabled) {
+            if (arpPlayingCount > 0 && arpGateCountdown <= 0.0)
+                releaseArpNotes();
+            if (arpStepCountdown <= 0.0) {
+                releaseArpNotes();
+
+                // Sorted ascending by pitch, then channel; four octaves
+                // maximum. All arrays are stack-local and fixed-capacity.
+                std::array<ArpNote, 512> candidates {};
+                int count = 0;
+                for (int octave = 0; octave < arpOctaves; ++octave)
+                    for (int note = 0; note < 128; ++note) {
+                        const int pitch = note + octave * 12;
+                        if (pitch > 127) continue;
+                        for (int ch = 0; ch < 16; ++ch) {
+                            const float vel = arpHeldVelocities[(size_t)ch][(size_t)note];
+                            if (vel > 0.0f && count < (int)candidates.size())
+                                candidates[(size_t)count++] = { pitch, ch + 1, vel };
+                        }
+                    }
+                if (count > 0) {
+                    if (arpMode == 4) {
+                        for (int i = 0; i < juce::jmin(16, count); ++i) {
+                            const auto& n = candidates[(size_t)i];
+                            startVoice(n.pitch, n.channel, n.velocity);
+                            arpPlaying[(size_t)arpPlayingCount++] = n;
+                        }
+                    } else {
+                        int chosen = 0;
+                        if (arpMode == 0) chosen = (int)(arpStepCounter % (unsigned)count);
+                        else if (arpMode == 1)
+                            chosen = count - 1 - (int)(arpStepCounter % (unsigned)count);
+                        else if (arpMode == 2) {
+                            const int cycle = juce::jmax(1, 2 * count - 2);
+                            const int pos = (int)(arpStepCounter % (unsigned)cycle);
+                            chosen = pos < count ? pos : cycle - pos;
+                        } else {
+                            arpRandomState ^= arpRandomState << 13;
+                            arpRandomState ^= arpRandomState >> 17;
+                            arpRandomState ^= arpRandomState << 5;
+                            chosen = (int)(arpRandomState % (unsigned)count);
+                        }
+                        const auto& n = candidates[(size_t)chosen];
+                        startVoice(n.pitch, n.channel, n.velocity);
+                        arpPlaying[0] = n;
+                        arpPlayingCount = 1;
+                    }
+                    arpDisplayNote.store(arpPlaying[0].pitch, std::memory_order_relaxed);
+                }
+
+                const bool odd = (arpStepCounter & 1u) != 0;
+                const double swingFactor = 1.0 + (odd ? -0.5 : 0.5) * arpSwing;
+                const double stepDuration = juce::jmax(1.0, baseArpStepSamples * swingFactor);
+                arpGateCountdown = juce::jmax(1.0, stepDuration * arpGate);
+                arpStepCountdown += stepDuration;
+                ++arpStepCounter;
+            }
+            arpStepCountdown -= 1.0;
+            if (arpPlayingCount > 0) arpGateCountdown -= 1.0;
         }
         // Global LFO phase runs continuously, including while notes overlap.
         // Per-note mode uses separate phases stored in each Voice instead.
@@ -779,6 +922,12 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
         set(prefix + "Delay", 0.0f);
         set(prefix + "Reverb", 0.0f);
     }
+    set("arpEnabled", 0.0f);
+    set("arpMode", 0.0f);
+    set("arpDivision", 2.0f);
+    set("arpGate", 0.7f);
+    set("arpSwing", 0.0f);
+    set("arpOctaves", 1.0f);
     set("lfoWave", 0.0f);
     set("lfoRate", 5.0f);
     set("lfoSync", 0.0f);

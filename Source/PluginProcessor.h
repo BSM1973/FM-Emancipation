@@ -24,6 +24,10 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
     juce::AudioProcessorValueTreeState parameters;
+    int getArpNoteForDisplay() const noexcept
+    {
+        return arpDisplayNote.load(std::memory_order_relaxed);
+    }
     float getLfoPhaseForDisplay(int index) const noexcept
     {
         return lfoDisplayPhases[(size_t)juce::jlimit(0, 1, index)].load(std::memory_order_relaxed);
@@ -51,6 +55,16 @@ private:
         bool releasing = false;
     };
     std::array<Voice, 16> voices {};
+    // Held keys are scoped per MIDI channel to preserve MPE/multichannel MIDI.
+    // Values are input velocities, with zero indicating a released key.
+    std::array<std::array<float, 128>, 16> arpHeldVelocities {};
+    struct ArpNote { int pitch = -1, channel = 1; float velocity = 0.0f; };
+    std::array<ArpNote, 16> arpPlaying {};
+    int arpPlayingCount = 0;
+    double arpStepCountdown = 0.0, arpGateCountdown = 0.0;
+    unsigned int arpStepCounter = 0, arpRandomState = 0x7a9e3d21u;
+    bool arpWasEnabled = false;
+    std::atomic<int> arpDisplayNote { -1 };
     double rate = 44100.0;
     // Global stereo post-synthesis chain, prepared once; no heap allocation
     // in processBlock, and no effect changes the six-operator voice engine.
