@@ -41,6 +41,27 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     presetSelector.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
     presetSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
     addAndMakeVisible(presetSelector);
+    savePresetButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    savePresetButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    savePresetButton.onClick = [this] {
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Enregistrer un preset FM Emancipation", juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                .getChildFile("FM Emancipation").getChildFile("Mon preset.fme"), "*.fme");
+        chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                 | juce::FileBrowserComponent::warnAboutOverwriting,
+            [this, chooser](const juce::FileChooser& fc) {
+                auto target = fc.getResult();
+                if (target == juce::File()) return;
+                target = target.withFileExtension(".fme");
+                if (!target.getParentDirectory().createDirectory()) return;
+                juce::MemoryBlock data;
+                processor.getStateInformation(data);
+                if (!target.replaceWithData(data.getData(), data.getSize()))
+                    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                        "FM Emancipation", "Impossible d'enregistrer le preset.", "OK");
+            });
+    };
+    addAndMakeVisible(savePresetButton);
     setSize(1496, 990);
     setResizable(true, true);
     setResizeLimits(900, 650, 2200, 1500);
@@ -136,7 +157,8 @@ void FMEmancipationAudioProcessorEditor::resized()
         s.setBounds(juce::Rectangle<int>(x, y, w, h)
             .toFloat().transformedBy(juce::AffineTransform::scale(getWidth()/1496.0f, getHeight()/990.0f)).getSmallestIntegerContainer());
     };
-    fit(presetSelector, 54, 163, 510, 39);
+    fit(presetSelector, 54, 163, 380, 39);
+    fit(savePresetButton, 442, 163, 150, 39);
     fit(algorithm, 795, 151, 94, 79);
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
