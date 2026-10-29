@@ -4,6 +4,20 @@
 namespace {
 constexpr double twoPi = juce::MathConstants<double>::twoPi;
 
+// Topology-preserving 2-pole state-variable filter (TPT/SVF).
+struct FilterSignals { double low, high, band, notch; };
+FilterSignals processSvf(double input, double g, double k,
+                         double& ic1eq, double& ic2eq) noexcept
+{
+    const double a1 = 1.0 / (1.0 + g * (g + k));
+    const double v1 = a1 * (ic1eq + g * (input - ic2eq));
+    const double v2 = ic2eq + g * v1;
+    ic1eq = 2.0 * v1 - ic1eq;
+    ic2eq = 2.0 * v2 - ic2eq;
+    const double high = input - k * v1 - v2;
+    return { v2, high, k * v1, high + v2 };
+}
+
 double evaluateLfo(double phase, int shape) noexcept
 {
     const double fraction = (phase - twoPi * std::floor(phase / twoPi)) / twoPi;
@@ -26,6 +40,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("output", "Output gain", 0, 1, 0.35f);
     f("attack", "Attack", 0.001f, 5, 0.01f);
     f("release", "Release", 0.01f, 8, 0.35f);
+    f("filterMode", "Filter type", 0.0f, 6.0f, 0.0f);
+    p.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { "filterCutoff", 1 }, "Filter cutoff (Hz)",
+        juce::NormalisableRange<float>(25.0f, 18000.0f, 0.0f, 0.27f), 9000.0f));
+    f("filterResonance", "Filter resonance", 0.0f, 1.0f, 0.15f);
+    f("filterMix", "Filter wet/dry mix", 0.0f, 1.0f, 1.0f);
+    f("filterEnv1", "ENV 1 to filter cutoff", -1.0f, 1.0f, 0.0f);
+    f("filterEnv2", "ENV 2 to filter cutoff", -1.0f, 1.0f, 0.0f);
     // The LFO defaults to OFF and does not alter existing sessions.
     f("lfoWave", "LFO waveform", 0.0f, 3.0f, 0.0f);
     f("lfoRate", "LFO free rate (Hz)", 0.05f, 20.0f, 5.0f);
@@ -98,6 +120,16 @@ void FMEmancipationAudioProcessor::prepareToPlay(double sr, int)
     pitchBendSemitones.fill(0.0);
     lfoPhases.fill(0.0);
     for (auto& phase : lfoDisplayPhases) phase.store(0.0f, std::memory_order_relaxed);
+    cutoffSmoother.reset(rate, 0.025);
+    resonanceSmoother.reset(rate, 0.025);
+    filterMixSmoother.reset(rate, 0.025);
+    cutoffSmoother.setCurrentAndTargetValue(
+        parameters.getRawParameterValue("filterCutoff")->load());
+    resonanceSmoother.setCurrentAndTargetValue(
+        parameters.getRawParameterValue("filterResonance")->load());
+    filterMixSmoother.setCurrentAndTargetValue(
+        parameters.getRawParameterValue("filterMix")->load());
+    lastFilterMode = 0;
 }
 void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
@@ -110,6 +142,17 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const double output = param("output");
     const double attack = param("attack");
     const double release = param("release");
+    const int filterMode = juce::jlimit(0, 6, (int)std::lround(param("filterMode")));
+    cutoffSmoother.setTargetValue(param("filterCutoff"));
+    resonanceSmoother.setTargetValue(param("filterResonance"));
+    filterMixSmoother.setTargetValue(param("filterMix"));
+    const double filterEnvDepth[2] { param("filterEnv1"), param("filterEnv2") };
+    if (filterMode != lastFilterMode) {
+        // Clear integrators only on topology changes, not on every note/block.
+        for (auto& voice : voices)
+            for (auto& stage : voice.filterIntegrators) stage = {};
+        lastFilterMode = filterMode;
+    }
     const int lfoWave = juce::jlimit(0, 3, (int)std::round(param("lfoWave")));
     const double lfoRate = param("lfoRate");
     const bool lfoSync = param("lfoSync") >= 0.5f;
@@ -217,6 +260,9 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     int eventSample = 0;
     bool hasEvent = iterator.getNextEvent(message, eventSample);
     for (int s = 0; s < buffer.getNumSamples(); ++s) {
+        const double currentCutoff = cutoffSmoother.getNextValue();
+        const double currentResonance = resonanceSmoother.getNextValue();
+        const double currentFilterMix = filterMixSmoother.getNextValue();
         while (hasEvent && eventSample <= s) {
             if (message.isNoteOn()) {
                 Voice* slot = nullptr;
@@ -258,6 +304,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
 
             // Each modulation envelope belongs to this voice: triggering
             // another note cannot restart a held note's envelope.
+            double modEnvelopeValues[2] {};
             double envelopePitchSemitones = 0.0;
             double envelopeFM = 1.0;
             double envelopeAM = 0.0;
@@ -287,6 +334,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                     value = 0.0;
                 }
 
+                modEnvelopeValues[e] = value;
                 const double modulationValue = value * envAmount[e];
                 switch (envTarget[e]) {
                     case 1: envelopePitchSemitones += 12.0 * modulationValue; break;
@@ -403,7 +451,38 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             const double sum = carrierSum / juce::jmax(1, carrierCount);
             const double amSource = 0.5 + 0.5 * op[5];
-            mix += sum * ((1.0 - modulatedAMDepth) + modulatedAMDepth * amSource) * tremolo * envelopeLevel * v.envelope * v.velocity;
+            double voiceSample = sum * ((1.0 - modulatedAMDepth) + modulatedAMDepth * amSource)
+                * tremolo * envelopeLevel * v.envelope * v.velocity;
+
+            if (filterMode != 0 && currentFilterMix > 0.0) {
+                // Bipolar modulation from both independent ADSRs; positive
+                // values open the cutoff as the envelope rises.
+                const double octaveOffset = 5.0 * (filterEnvDepth[0] * modEnvelopeValues[0]
+                                                  + filterEnvDepth[1] * modEnvelopeValues[1]);
+                const double maxCutoff = juce::jmin(18000.0, rate * 0.45);
+                const double cutoffHz = juce::jlimit(20.0, maxCutoff,
+                    currentCutoff * (octaveOffset != 0.0 ? std::exp2(octaveOffset) : 1.0));
+                const double g = std::tan(juce::MathConstants<double>::pi * cutoffHz / rate);
+                // Keep the two cascaded 24dB sections from amplifying extreme
+                // resonances excessively; single-stage modes remain expressive.
+                const bool twoStages = filterMode == 2 || filterMode == 4;
+                const double q = 0.70710678 + currentResonance * (twoStages ? 1.8 : 5.0);
+                const double k = 1.0 / q;
+                auto& first = v.filterIntegrators[0];
+                const auto response = processSvf(voiceSample, g, k, first.ic1eq, first.ic2eq);
+                double filtered = voiceSample;
+                if (filterMode == 1 || filterMode == 2) filtered = response.low;
+                else if (filterMode == 3 || filterMode == 4) filtered = response.high;
+                else if (filterMode == 5) filtered = response.band;
+                else if (filterMode == 6) filtered = response.notch;
+                if (twoStages) {
+                    auto& second = v.filterIntegrators[1];
+                    const auto secondResponse = processSvf(filtered, g, k, second.ic1eq, second.ic2eq);
+                    filtered = filterMode == 2 ? secondResponse.low : secondResponse.high;
+                }
+                voiceSample += currentFilterMix * (filtered - voiceSample);
+            }
+            mix += voiceSample;
         }
         const float sample = (float)(std::tanh(mix * output));
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
@@ -449,6 +528,12 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("fmDepth", 0.7f + brightness * 5.5f + (family % 3) * 0.5f);
     set("amDepth", family == 1 || family == 8 ? 0.35f : 0.05f);
     set("output", 0.3f);
+    set("filterMode", 0.0f);
+    set("filterCutoff", 9000.0f);
+    set("filterResonance", 0.15f);
+    set("filterMix", 1.0f);
+    set("filterEnv1", 0.0f);
+    set("filterEnv2", 0.0f);
     set("lfoWave", 0.0f);
     set("lfoRate", 5.0f);
     set("lfoSync", 0.0f);
