@@ -85,6 +85,26 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             });
     };
     addAndMakeVisible(loadPresetButton);
+    userPresetSelector.setTextWhenNothingSelected("MES PRESETS");
+    userPresetSelector.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff1b2a38));
+    userPresetSelector.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+    userPresetSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+    userPresetSelector.onChange = [this] {
+        const auto id = userPresetSelector.getSelectedId();
+        if (id <= 0) return;
+        const auto folder = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+            .getChildFile("FM Emancipation");
+        const auto files = folder.findChildFiles(juce::File::findFiles, false, "*.fme");
+        if (id > files.size()) return;
+        juce::MemoryBlock data;
+        if (files[id - 1].loadFileAsData(data) && !data.isEmpty()) {
+            processor.setStateInformation(data.getData(), (int)data.getSize());
+            presetSelector.setSelectedId(processor.getCurrentProgram() + 1, juce::dontSendNotification);
+            repaint();
+        }
+    };
+    addAndMakeVisible(userPresetSelector);
+    refreshUserPresets();
     setSize(1496, 990);
     setResizable(true, true);
     setResizeLimits(900, 650, 2200, 1500);
@@ -183,6 +203,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(presetSelector, 54, 163, 270, 39);
     fit(savePresetButton, 332, 163, 130, 39);
     fit(loadPresetButton, 470, 163, 120, 39);
+    fit(userPresetSelector, 54, 210, 536, 32);
     fit(algorithm, 795, 151, 94, 79);
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
@@ -195,4 +216,15 @@ void FMEmancipationAudioProcessorEditor::resized()
         fit(opSustains[i], 142 + 238*i, 689, 52, 62);
         fit(opReleases[i], 196 + 238*i, 689, 52, 62);
     }
+}
+
+void FMEmancipationAudioProcessorEditor::refreshUserPresets()
+{
+    const auto folder = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("FM Emancipation");
+    const auto files = folder.findChildFiles(juce::File::findFiles, false, "*.fme");
+    userPresetSelector.clear(juce::dontSendNotification);
+    for (int i = 0; i < files.size(); ++i)
+        userPresetSelector.addItem(files[i].getFileNameWithoutExtension(), i + 1);
+    userPresetSelector.setTextWhenNothingSelected("MES PRESETS (" + juce::String(files.size()) + ")");
 }
