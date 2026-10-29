@@ -25,6 +25,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
         f("opSustain" + juce::String(i), "OP " + juce::String(i + 1) + " sustain", 0.0f, 1.0f, 1.0f);
         f("opRelease" + juce::String(i), "OP " + juce::String(i + 1) + " release", 0.01f, 8.0f, 0.35f);
     }
+    for (int i = 0; i < 6; ++i) {
+        f("feedback" + juce::String(i), "Operator feedback", 0.0f, 1.0f, 0.0f);
+        f("wave" + juce::String(i), "Operator waveform", 0.0f, 3.0f, 0.0f);
+        f("velocity" + juce::String(i), "Operator velocity sensitivity", 0.0f, 1.0f, 0.0f);
+    }
     return { p.begin(), p.end() };
 }
 FMEmancipationAudioProcessor::FMEmancipationAudioProcessor()
@@ -55,6 +60,13 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         opDecay[i] = param("opDecay" + juce::String(i));
         opSustain[i] = param("opSustain" + juce::String(i));
         opRelease[i] = param("opRelease" + juce::String(i));
+    }
+    double feedback[6], velocitySensitivity[6];
+    int waveType[6];
+    for (int i = 0; i < 6; ++i) {
+        feedback[i] = param("feedback" + juce::String(i));
+        velocitySensitivity[i] = param("velocity" + juce::String(i));
+        waveType[i] = juce::jlimit(0, 3, (int)std::round(param("wave" + juce::String(i))));
     }
     juce::MidiBuffer::Iterator iterator(midi);
     juce::MidiMessage message;
@@ -125,8 +137,15 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 } else {
                     env = juce::jmax(0.0, env - 1.0 / (rate * opRelease[i]));
                 }
-                const double wave = std::sin(v.phase[i] + modulation[i] * depth);
-                op[i] = wave * levels[i] * env;
+                const double phase = v.phase[i] + modulation[i] * depth + v.feedbackSample[i] * feedback[i] * 4.0;
+                const double unit = (phase - twoPi * std::floor(phase / twoPi)) / twoPi;
+                double wave = std::sin(phase);
+                if (waveType[i] == 1) wave = 1.0 - 4.0 * std::abs(unit - 0.5);
+                else if (waveType[i] == 2) wave = 2.0 * unit - 1.0;
+                else if (waveType[i] == 3) wave = unit < 0.5 ? 1.0 : -1.0;
+                v.feedbackSample[i] = wave;
+                const double velocityGain = 1.0 - velocitySensitivity[i] + velocitySensitivity[i] * v.velocity;
+                op[i] = wave * levels[i] * env * velocityGain;
                 if (route[i] < 0) {
                     carrierSum += op[i];
                     ++carrierCount;
