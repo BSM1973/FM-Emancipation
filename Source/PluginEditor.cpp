@@ -890,7 +890,8 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             getLocalArea(&arpeggiatorButton, arpeggiatorButton.getLocalBounds()), this);
     };
     addAndMakeVisible(arpeggiatorButton);
-    updateLfoSourceVisibility();
+    // Page visibility is initialized by selectTab(0), once all embedded
+    // components and parameter-attached controls have been constructed.
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
         add(levels[i], "level" + juce::String(i), true);
