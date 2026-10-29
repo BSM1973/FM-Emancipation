@@ -6,10 +6,13 @@
 class FMLfoOperatorMatrix final : public juce::Component
 {
 public:
-    explicit FMLfoOperatorMatrix(FMEmancipationAudioProcessor& processor)
+    explicit FMLfoOperatorMatrix(FMEmancipationAudioProcessor& processor, int source)
+        : sourceNumber(source)
     {
         setSize(850, 524);
-        static const char* parameterPrefixes[] = { "lfoOpPitch", "lfoOpLevel", "lfoOpFM", "lfoOpFeedback" };
+        static const char* lfo1Prefixes[] = { "lfoOpPitch", "lfoOpLevel", "lfoOpFM", "lfoOpFeedback" };
+        static const char* lfo2Prefixes[] = { "lfo2OpPitch", "lfo2OpLevel", "lfo2OpFM", "lfo2OpFeedback" };
+        const auto* parameterPrefixes = sourceNumber == 2 ? lfo2Prefixes : lfo1Prefixes;
         static const char* tooltips[] = {
             "Bipolaire : variation de hauteur jusqu'a +/- 2 demi-tons",
             "Bipolaire : modulation du niveau sonore de cet operateur",
@@ -41,7 +44,8 @@ public:
         g.fillAll(juce::Colour(0xff192b3a));
         g.setColour(juce::Colour(0xff78c9fa));
         g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
-        g.drawText("MATRICE DE MODULATION LFO", 22, 14, 780, 32, juce::Justification::left);
+        g.drawText("MATRICE DE MODULATION - LFO " + juce::String(sourceNumber),
+                   22, 14, 780, 32, juce::Justification::left);
         g.setColour(juce::Colour(0xffc4e5ff));
         g.setFont(juce::FontOptions(12.0f));
         g.drawText("Destination : MATRICE (6 OP)  |  Reglages bipolaires : -100 % a +100 %",
@@ -70,6 +74,7 @@ public:
     }
 
 private:
+    int sourceNumber = 1;
     std::array<juce::Slider, 24> sliders;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
 };
@@ -93,6 +98,8 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     add(output, "output", false);
     add(lfoRate, "lfoRate", false);
     add(lfoDepth, "lfoDepth", false);
+    add(lfo2Rate, "lfo2Rate", false);
+    add(lfo2Depth, "lfo2Depth", false);
     auto addLfoCombo = [&](juce::ComboBox& box, const juce::String& parameterID) {
         box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
         box.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
@@ -110,19 +117,40 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     addLfoCombo(lfoSync, "lfoSync");
     addLfoCombo(lfoDivision, "lfoDivision");
     addLfoCombo(lfoDestination, "lfoTarget");
+    lfo2Waveform.addItemList({ "Sinus", "Triangle", "Scie", "Carree" }, 1);
+    lfo2Sync.addItemList({ "Libre", "Tempo" }, 1);
+    lfo2Division.addItemList({ "1 mesure", "1/2", "1/4", "1/8", "1/16", "1/8 pointee", "1/8 triolet" }, 1);
+    lfo2Destination.addItemList({ "Desactive", "Vibrato", "Tremolo", "Profondeur FM", "Profondeur AM", "Matrice (6 OP)" }, 1);
+    addLfoCombo(lfo2Waveform, "lfo2Wave");
+    addLfoCombo(lfo2Sync, "lfo2Sync");
+    addLfoCombo(lfo2Division, "lfo2Division");
+    addLfoCombo(lfo2Destination, "lfo2Target");
+    lfoSourceSelector.addItem("LFO 1", 1);
+    lfoSourceSelector.addItem("LFO 2", 2);
+    lfoSourceSelector.setSelectedId(1, juce::dontSendNotification);
+    lfoSourceSelector.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+    lfoSourceSelector.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+    lfoSourceSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+    lfoSourceSelector.onChange = [this] { updateLfoSourceVisibility(); };
+    addAndMakeVisible(lfoSourceSelector);
     lfoRate.setTooltip("Vitesse du LFO en Hz lorsque le mode Libre est selectionne");
     lfoDepth.setTooltip("Intensite de la modulation LFO, de 0 a 100 %");
     lfoDivision.setTooltip("Duree d'un cycle synchronise au tempo du DAW");
     lfoDestination.setTooltip("Destination de modulation du LFO");
+    lfo2Rate.setTooltip("LFO 2 : vitesse libre en Hz");
+    lfo2Depth.setTooltip("LFO 2 : intensite de modulation");
+    lfo2Division.setTooltip("LFO 2 : division rythmique synchronisee au DAW");
     lfoMatrixButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
     lfoMatrixButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
     lfoMatrixButton.setTooltip("Ouvrir la matrice LFO vers les six operateurs");
     lfoMatrixButton.onClick = [this] {
         juce::CallOutBox::launchAsynchronously(
-            std::make_unique<FMLfoOperatorMatrix>(processor),
+            std::make_unique<FMLfoOperatorMatrix>(processor,
+                lfoSourceSelector.getSelectedId() == 2 ? 2 : 1),
             getLocalArea(&lfoMatrixButton, lfoMatrixButton.getLocalBounds()), this);
     };
     addAndMakeVisible(lfoMatrixButton);
+    updateLfoSourceVisibility();
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
         add(levels[i], "level" + juce::String(i), true);
@@ -328,7 +356,7 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xff8ba6bc)); g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     g.drawText("MODULATION ENGINE", 48, 785, 225, 20, juce::Justification::left);
     g.setColour(juce::Colour(0xff78c9fa));
-    g.drawText("LFO / MODULATION", 305, 785, 270, 20, juce::Justification::left);
+    g.drawText("LFO / MODULATION", 305, 785, 205, 20, juce::Justification::left);
     g.setColour(juce::Colour(0xffb5c6d6));
     g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     g.drawText("ONDE", 311, 812, 116, 17, juce::Justification::centred);
@@ -365,6 +393,13 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(lfoDivision, 675, 846, 106, 31);
     fit(lfoDepth, 795, 832, 99, 80);
     fit(lfoDestination, 914, 846, 151, 31);
+    fit(lfoSourceSelector, 526, 780, 112, 28);
+    fit(lfo2Waveform, 311, 846, 116, 31);
+    fit(lfo2Rate, 447, 832, 105, 80);
+    fit(lfo2Sync, 563, 846, 99, 31);
+    fit(lfo2Division, 675, 846, 106, 31);
+    fit(lfo2Depth, 795, 832, 99, 80);
+    fit(lfo2Destination, 914, 846, 151, 31);
     fit(lfoMatrixButton, 1076, 846, 100, 31);
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
@@ -377,6 +412,24 @@ void FMEmancipationAudioProcessorEditor::resized()
         fit(opSustains[i], 142 + 238*i, 707, 52, 47);
         fit(opReleases[i], 196 + 238*i, 707, 52, 47);
     }
+}
+
+void FMEmancipationAudioProcessorEditor::updateLfoSourceVisibility()
+{
+    const bool second = lfoSourceSelector.getSelectedId() == 2;
+    lfoRate.setVisible(!second);
+    lfoDepth.setVisible(!second);
+    lfoWaveform.setVisible(!second);
+    lfoSync.setVisible(!second);
+    lfoDivision.setVisible(!second);
+    lfoDestination.setVisible(!second);
+    lfo2Rate.setVisible(second);
+    lfo2Depth.setVisible(second);
+    lfo2Waveform.setVisible(second);
+    lfo2Sync.setVisible(second);
+    lfo2Division.setVisible(second);
+    lfo2Destination.setVisible(second);
+    lfoMatrixButton.setButtonText(second ? "MATRICE 2" : "MATRICE 1");
 }
 
 void FMEmancipationAudioProcessorEditor::refreshUserPresets()
