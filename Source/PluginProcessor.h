@@ -27,6 +27,8 @@ private:
     struct Voice {
         int note = -1;
         double phase[6] {};
+        double operatorEnvelope[6] {};
+        int operatorStage[6] {};
         double envelope = 0.0;
         double velocity = 0.0;
         bool releasing = false;
