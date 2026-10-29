@@ -1,6 +1,5 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "PluginEditor.h"
 #include <cmath>
 namespace {
 constexpr double twoPi = juce::MathConstants<double>::twoPi;
@@ -79,20 +78,38 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             if (v.releasing && v.envelope <= 0) { v = {}; continue; }
             const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note);
             double op[6] {};
-            // Different operator chain lengths and split carrier groups are selected per algorithm.
-            const int chain = 1 + (algorithm - 1) % 5;
-            const int carrierCount = algorithm <= 10 ? 2 : 3;
+            // Twenty explicit six-operator routings. Each row lists the
+            // destination operator for OP1..OP6 (-1 means a carrier).
+            // Modulation flows from higher operator indices to lower ones.
+            static constexpr int routes[20][6] = {
+                {-1,0,1,2,3,4}, {-1,0,0,2,2,4},
+                {-1,0,1,-1,3,4}, {-1,0,-1,2,3,4},
+                {-1,0,0,0,3,4}, {-1,0,1,1,1,4},
+                {-1,0,-1,2,-1,4}, {-1,0,1,-1,3,-1},
+                {-1,0,-1,2,2,-1}, {-1,0,0,-1,3,-1},
+                {-1,-1,1,2,3,4}, {-1,-1,1,-1,3,4},
+                {-1,-1,1,1,-1,4}, {-1,-1,1,-1,3,-1},
+                {-1,-1,-1,2,3,4}, {-1,-1,-1,2,-1,4},
+                {-1,-1,-1,2,2,-1}, {-1,-1,-1,-1,3,4},
+                {-1,-1,-1,-1,3,-1}, {-1,-1,-1,-1,-1,-1}
+            };
+            const auto& route = routes[algorithm - 1];
+            double modulation[6] {};
+            double carrierSum = 0.0;
+            int carrierCount = 0;
             for (int i = 5; i >= 0; --i) {
-                double modulation = 0.0;
-                if (i < 5 && (i % chain) != chain - 1) modulation = op[i + 1] * depth;
-                const double wave = std::sin(v.phase[i] + modulation);
+                const double wave = std::sin(v.phase[i] + modulation[i] * depth);
                 op[i] = wave * levels[i];
+                if (route[i] < 0) {
+                    carrierSum += op[i];
+                    ++carrierCount;
+                } else {
+                    modulation[route[i]] += op[i];
+                }
                 v.phase[i] += twoPi * hz * ratios[i] / rate;
                 if (v.phase[i] >= twoPi) v.phase[i] = std::fmod(v.phase[i], twoPi);
             }
-            double sum = op[0];
-            if (carrierCount > 1) sum += op[chain % 6];
-            if (carrierCount > 2) sum += op[(chain * 2) % 6];
+            const double sum = carrierSum / juce::jmax(1, carrierCount);
             const double amSource = 0.5 + 0.5 * op[5];
             mix += (sum / carrierCount) * ((1.0 - am) + am * amSource) * v.envelope * v.velocity;
         }
