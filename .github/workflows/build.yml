@@ -15,12 +15,28 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build --config Release --target FMEmancipation_VST3 --parallel 2
-      - name: Upload VST3 artifact
+      - name: Package VST3 on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugin="build/FMEmancipation_artefacts/Release/VST3/FM Emancipation.vst3"
+          test -d "$plugin"
+          codesign --force --deep --sign - "$plugin"
+          mkdir -p dist
+          ditto -c -k --keepParent "$plugin" dist/FM-Emancipation-macOS-VST3.zip
+      - name: Package VST3 on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $plugin = "build/FMEmancipation_artefacts/Release/VST3/FM Emancipation.vst3"
+          if (-not (Test-Path $plugin)) { throw "VST3 directory not found: $plugin" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path $plugin -DestinationPath dist/FM-Emancipation-Windows-VST3.zip -Force
+      - name: Upload installable VST3 archive
         uses: actions/upload-artifact@v4
         with:
-          name: FM-Emancipation-VST3-${{ runner.os }}
-          path: |
-            build/FMEmancipation_artefacts/Release/VST3/**/*.vst3
-            build/FMEmancipation_artefacts/VST3/**/*.vst3
+          name: FM-Emancipation-${{ runner.os }}-VST3
+          path: dist/*.zip
           if-no-files-found: error
           retention-days: 30
