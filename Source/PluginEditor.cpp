@@ -274,7 +274,7 @@ class FMMultimodeFilterPanel final : public juce::Component
 public:
     explicit FMMultimodeFilterPanel(FMEmancipationAudioProcessor& processor)
     {
-        setSize(926, 446);
+        setSize(926, 615);
         filterMode.addItemList({
             "DÉSACTIVÉ", "PASSE-BAS 12 dB", "PASSE-BAS 24 dB",
             "PASSE-HAUT 12 dB", "PASSE-HAUT 24 dB",
@@ -313,6 +313,29 @@ public:
         controls[2].setTooltip("Dosage de signal filtré, de 0 à 100 %");
         controls[3].setTooltip("Modulation bipolaire de la coupure par l'enveloppe ENV 1");
         controls[4].setTooltip("Modulation bipolaire de la coupure par l'enveloppe ENV 2");
+        static constexpr const char* lfoRoutingIds[] = {
+            "filterLfo1Cutoff", "filterLfo2Cutoff",
+            "filterLfo1Resonance", "filterLfo2Resonance"
+        };
+        for (int i = 0; i < 4; ++i) {
+            auto& slider = lfoRoutes[(size_t)i];
+            slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
+            slider.setColour(juce::Slider::rotarySliderFillColourId,
+                i % 2 == 0 ? juce::Colour(0xff70d6f5) : juce::Colour(0xff9cb3ff));
+            slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff36576e));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colour(0xffd4f2ff));
+            slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffc4e5ff));
+            slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+            slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+            slider.setTooltip(i < 2
+                ? "Modulation bipolaire de la coupure : +/- 4 octaves au maximum"
+                : "Modulation bipolaire de la resonance, limitee a la plage du filtre");
+            addAndMakeVisible(slider);
+            sliderAttachments.push_back(
+                std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                    processor.parameters, lfoRoutingIds[i], slider));
+        }
     }
 
     void paint(juce::Graphics& g) override
@@ -404,8 +427,28 @@ public:
                    juce::Justification::left);
         g.setColour(juce::Colour(0xffa7c7da));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawText("Les enveloppes déplacent la coupure en temps réel ; le graphique montre la coupure de base.",
+        g.drawText("Les enveloppes et LFO modulent le filtre en temps réel. La courbe indique sa réponse de base.",
                    34, 421, 865, 18, juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xff243d50));
+        g.fillRoundedRectangle(18.0f, 456.0f, 890.0f, 144.0f, 6.0f);
+        g.setColour(juce::Colour(0xff4b708a));
+        g.drawRoundedRectangle(18.0f, 456.0f, 890.0f, 144.0f, 6.0f, 1.0f);
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+        g.drawText("MODULATIONS LFO — FILTRE", 30, 466, 435, 20, juce::Justification::left);
+        static constexpr const char* routingNames[] = {
+            "LFO 1 → COUPURE", "LFO 2 → COUPURE", "LFO 1 → RÉSONANCE", "LFO 2 → RÉSONANCE"
+        };
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        for (int i = 0; i < 4; ++i) {
+            g.setColour(i % 2 == 0 ? juce::Colour(0xff70d6f5) : juce::Colour(0xff9cb3ff));
+            g.drawText(routingNames[i], 53 + 218 * i, 486, 180, 18,
+                       juce::Justification::centred);
+        }
+        g.setColour(juce::Colour(0xffa7c7da));
+        g.setFont(juce::FontOptions(11.0f));
+        g.drawText("Routages indépendants des destinations LFO. Régler l'intensité du LFO au-dessus de zéro.",
+                   34, 594, 865, 16, juce::Justification::centredLeft);
     }
 
     void resized() override
@@ -413,11 +456,14 @@ public:
         filterMode.setBounds(31, 146, 180, 34);
         for (int i = 0; i < 5; ++i)
             controls[(size_t)i].setBounds(239 + i * 132, 124, 104, 84);
+        for (int i = 0; i < 4; ++i)
+            lfoRoutes[(size_t)i].setBounds(90 + 218 * i, 506, 110, 82);
     }
 
 private:
     juce::ComboBox filterMode;
     std::array<juce::Slider, 5> controls;
+    std::array<juce::Slider, 4> lfoRoutes;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> typeAttachment;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
 };
