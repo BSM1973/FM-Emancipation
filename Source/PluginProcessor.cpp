@@ -139,6 +139,44 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
     }
 }
+juce::String FMEmancipationAudioProcessor::getProgramName(int index)
+{
+    static const char* families[] = {
+        "Electric Piano", "Bell", "Bass", "Lead", "Pad",
+        "Pluck", "Organ", "Keys", "Percussion", "Texture"
+    };
+    if (index < 0 || index >= 100) return {};
+    return juce::String(families[index / 10]) + " " + juce::String(index % 10 + 1).paddedLeft('0', 2);
+}
+void FMEmancipationAudioProcessor::setCurrentProgram(int index)
+{
+    if (index < 0 || index >= 100) return;
+    currentProgram = index;
+    const int family = index / 10;
+    const int variation = index % 10;
+    const float brightness = (float)variation / 9.0f;
+    auto set = [this](const juce::String& id, float value) {
+        if (auto* parameter = parameters.getParameter(id))
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+    };
+    set("algorithm", (float)(1 + (family * 2 + variation) % 20));
+    set("fmDepth", 0.7f + brightness * 5.5f + (family % 3) * 0.5f);
+    set("amDepth", family == 1 || family == 8 ? 0.35f : 0.05f);
+    set("output", 0.3f);
+    set("attack", family == 4 || family == 9 ? 0.5f + brightness : 0.005f);
+    set("release", family == 4 || family == 9 ? 2.0f + brightness : 0.25f);
+    for (int i = 0; i < 6; ++i) {
+        const auto suffix = juce::String(i);
+        const float ratio = (float)(1 + ((family + i + variation / 3) % 8));
+        set("ratio" + suffix, family == 3 ? (float)(i + 1) : ratio);
+        set("level" + suffix, i == 0 ? 0.85f : 0.25f + 0.09f * (float)((i + variation) % 6));
+        const bool sustained = family == 4 || family == 6 || family == 9;
+        set("opAttack" + suffix, sustained ? 0.2f + 0.08f * i : 0.002f + 0.004f * i);
+        set("opDecay" + suffix, 0.15f + 0.12f * i + 0.03f * variation);
+        set("opSustain" + suffix, sustained ? 0.65f + 0.04f * (i % 3) : (family == 1 || family == 8 ? 0.0f : 0.3f));
+        set("opRelease" + suffix, sustained ? 1.2f + 0.15f * i : 0.18f + 0.07f * i);
+    }
+}
 void FMEmancipationAudioProcessor::getStateInformation(juce::MemoryBlock& data)
 {
     auto state = parameters.copyState();
