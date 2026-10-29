@@ -182,7 +182,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         const bool matrix2Enabled = lfo2Target == 5 && lfo2Depth > 0.0;
         const double pitchSemitones = (lfoTarget == 1 ? 2.0 * mod : 0.0)
                                     + (lfo2Target == 1 ? 2.0 * mod2 : 0.0);
-        const double pitchFactor = std::pow(2.0, pitchSemitones / 12.0);
+        const double pitchFactor = pitchSemitones != 0.0 ? std::pow(2.0, pitchSemitones / 12.0) : 1.0;
         const double tremolo = (lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0)
                              * (lfo2Target == 2 ? 1.0 - 0.5 * lfo2Depth + 0.5 * mod2 : 1.0);
         const double modulatedFMDepth = juce::jmax(0.0, depth
@@ -264,7 +264,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 }
                 const double opPitchOffset = (matrixEnabled ? 2.0 * mod * matrixPitch[i] : 0.0)
                     + (matrix2Enabled ? 2.0 * mod2 * matrix2Pitch[i] : 0.0);
-                const double opPitchFactor = std::pow(2.0, opPitchOffset / 12.0);
+                const double opPitchFactor = opPitchOffset != 0.0 ? std::pow(2.0, opPitchOffset / 12.0) : 1.0;
                 v.phase[i] += twoPi * hz * ratios[i] * opPitchFactor / rate;
                 if (v.phase[i] >= twoPi) v.phase[i] = std::fmod(v.phase[i], twoPi);
             }
