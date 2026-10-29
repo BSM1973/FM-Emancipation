@@ -268,6 +268,160 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> targetAttachments;
 };
 
+
+class FMMultimodeFilterPanel final : public juce::Component
+{
+public:
+    explicit FMMultimodeFilterPanel(FMEmancipationAudioProcessor& processor)
+    {
+        setSize(926, 446);
+        filterMode.addItemList({
+            "DÉSACTIVÉ", "PASSE-BAS 12 dB", "PASSE-BAS 24 dB",
+            "PASSE-HAUT 12 dB", "PASSE-HAUT 24 dB",
+            "PASSE-BANDE 12 dB", "COUPE-BANDE 12 dB"
+        }, 1);
+        filterMode.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+        filterMode.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+        filterMode.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+        filterMode.onChange = [this] { repaint(); };
+        addAndMakeVisible(filterMode);
+        typeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+            processor.parameters, "filterMode", filterMode);
+
+        static constexpr const char* paramIds[] = {
+            "filterCutoff", "filterResonance", "filterMix", "filterEnv1", "filterEnv2"
+        };
+        for (int i = 0; i < 5; ++i) {
+            auto& slider = controls[(size_t)i];
+            slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 22);
+            slider.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff70d6f5));
+            slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff36576e));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colour(0xffd4f2ff));
+            slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffc4e5ff));
+            slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+            slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+            slider.onValueChange = [this] { repaint(); };
+            addAndMakeVisible(slider);
+            sliderAttachments.push_back(
+                std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                    processor.parameters, paramIds[i], slider));
+        }
+        controls[0].setTextValueSuffix(" Hz");
+        controls[0].setTooltip("Fréquence de coupure du filtre, de 25 Hz à 18 kHz");
+        controls[1].setTooltip("Résonance autour de la fréquence de coupure");
+        controls[2].setTooltip("Dosage de signal filtré, de 0 à 100 %");
+        controls[3].setTooltip("Modulation bipolaire de la coupure par l'enveloppe ENV 1");
+        controls[4].setTooltip("Modulation bipolaire de la coupure par l'enveloppe ENV 2");
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(0xff192b3a));
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(24.0f, juce::Font::bold));
+        g.drawText("FILTRE MULTIMODE", 26, 18, 670, 35, juce::Justification::left);
+        g.setColour(juce::Colour(0xffb5c6d6));
+        g.setFont(juce::FontOptions(12.0f));
+        g.drawText("Filtre par voix • 12/24 dB • ENV 1 et ENV 2 • mélange progressif",
+                   26, 55, 860, 22, juce::Justification::left);
+
+        g.setColour(juce::Colour(0xff243d50));
+        g.fillRoundedRectangle(18.0f, 88.0f, 890.0f, 127.0f, 6.0f);
+        g.setColour(juce::Colour(0xff4b708a));
+        g.drawRoundedRectangle(18.0f, 88.0f, 890.0f, 127.0f, 6.0f, 1.0f);
+
+        g.setColour(juce::Colour(0xffc8e7f9));
+        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+        g.drawText("TYPE", 30, 102, 182, 20, juce::Justification::centred);
+        static constexpr const char* labels[] = {
+            "COUPURE", "RÉSONANCE", "MIX", "ENV 1 → CUT", "ENV 2 → CUT"
+        };
+        for (int i = 0; i < 5; ++i)
+            g.drawText(labels[i], 233 + 132 * i, 100, 116, 20, juce::Justification::centred);
+
+        const auto bounds = juce::Rectangle<float>(43.0f, 247.0f, 840.0f, 163.0f);
+        g.setColour(juce::Colour(0xff112838));
+        g.fillRoundedRectangle(bounds, 5.0f);
+        g.setColour(juce::Colour(0xff4b708a));
+        g.drawRoundedRectangle(bounds, 5.0f, 1.0f);
+        const float graphLeft = 75.0f, graphRight = 870.0f;
+        const float graphTop = 278.0f, graphBottom = 394.0f;
+        for (int db = -36; db <= 12; db += 12) {
+            const float y = graphBottom - (db + 48.0f) / 60.0f * (graphBottom - graphTop);
+            g.setColour(juce::Colour(0xff294759));
+            g.drawHorizontalLine(juce::roundToInt(y), graphLeft, graphRight);
+            g.setColour(juce::Colour(0xff8da8b9));
+            g.setFont(juce::FontOptions(10.0f));
+            g.drawText(juce::String(db) + " dB", 44, juce::roundToInt(y) - 8, 42, 14,
+                       juce::Justification::left);
+        }
+        auto graphX = [&](double hz) {
+            return graphLeft + (float)(std::log(hz / 25.0) / std::log(18000.0 / 25.0))
+                               * (graphRight - graphLeft);
+        };
+        for (const auto hz : { 100.0, 1000.0, 10000.0 }) {
+            const float x = graphX(hz);
+            g.setColour(juce::Colour(0xff294759));
+            g.drawVerticalLine(juce::roundToInt(x), graphTop, graphBottom);
+            g.setColour(juce::Colour(0xff8da8b9));
+            g.drawText(hz == 100.0 ? "100 Hz" : hz == 1000.0 ? "1 kHz" : "10 kHz",
+                       juce::roundToInt(x) - 32, 399, 66, 15, juce::Justification::centred);
+        }
+
+        const int mode = juce::jlimit(0, 6, filterMode.getSelectedId() - 1);
+        const double cutoff = juce::jlimit(25.0, 18000.0, controls[0].getValue());
+        const double resonance = juce::jlimit(0.0, 1.0, controls[1].getValue());
+        const bool cascaded = mode == 2 || mode == 4;
+        const double q = 0.70710678 + resonance * (cascaded ? 1.8 : 5.0);
+        const float cursorX = graphX(cutoff);
+        juce::Path response;
+        for (int point = 0; point <= 220; ++point) {
+            const double freq = 25.0 * std::pow(18000.0 / 25.0, (double)point / 220.0);
+            const double ratio = freq / cutoff;
+            const double square = ratio * ratio;
+            const double denominator = std::sqrt((1.0 - square) * (1.0 - square)
+                                                 + square / (q * q));
+            double magnitude = 1.0;
+            if (mode == 1 || mode == 2) magnitude = 1.0 / denominator;
+            else if (mode == 3 || mode == 4) magnitude = square / denominator;
+            else if (mode == 5) magnitude = (ratio / q) / denominator;
+            else if (mode == 6) magnitude = std::abs(1.0 - square) / denominator;
+            if (cascaded) magnitude *= magnitude;
+            const double db = 20.0 * std::log10(juce::jmax(1.0e-6, magnitude));
+            const float y = graphBottom - (float)((juce::jlimit(-48.0, 12.0, db) + 48.0) / 60.0)
+                                                    * (graphBottom - graphTop);
+            const float x = graphLeft + (graphRight - graphLeft) * (float)point / 220.0f;
+            if (point == 0) response.startNewSubPath(x, y);
+            else response.lineTo(x, y);
+        }
+        g.setColour(juce::Colour(0xff70d6f5));
+        g.strokePath(response, juce::PathStrokeType(2.2f));
+        g.setColour(juce::Colour(0xffd7efff).withAlpha(0.75f));
+        g.drawLine(cursorX, graphTop, cursorX, graphBottom, 1.2f);
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.drawText("RÉPONSE DU FILTRE  /  APERÇU INDICATIF", 48, 224, 440, 18,
+                   juce::Justification::left);
+        g.setColour(juce::Colour(0xffa7c7da));
+        g.setFont(juce::FontOptions(11.0f));
+        g.drawText("Les enveloppes déplacent la coupure en temps réel ; le graphique montre la coupure de base.",
+                   34, 421, 865, 18, juce::Justification::centredLeft);
+    }
+
+    void resized() override
+    {
+        filterMode.setBounds(31, 146, 180, 34);
+        for (int i = 0; i < 5; ++i)
+            controls[(size_t)i].setBounds(239 + i * 132, 124, 104, 84);
+    }
+
+private:
+    juce::ComboBox filterMode;
+    std::array<juce::Slider, 5> controls;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> typeAttachment;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
+};
+
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processor(p)
 {
@@ -357,6 +511,15 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             getLocalArea(&modulationEnvelopesButton, modulationEnvelopesButton.getLocalBounds()), this);
     };
     addAndMakeVisible(modulationEnvelopesButton);
+    filterButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    filterButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    filterButton.setTooltip("Filtre multimode : coupure, résonance et modulation par les enveloppes");
+    filterButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<FMMultimodeFilterPanel>(processor),
+            getLocalArea(&filterButton, filterButton.getLocalBounds()), this);
+    };
+    addAndMakeVisible(filterButton);
     updateLfoSourceVisibility();
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
@@ -626,7 +789,7 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
     drawLfoPreview(1);
     g.setColour(juce::Colour(0xff8ba6bc));
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText("MASTER OUTPUT", 1030, 785, 400, 20, juce::Justification::left);
+    g.drawText("MASTER OUTPUT", 1193, 785, 265, 20, juce::Justification::left);
     g.drawText("FM EMANCIPATION  /  SIX-OPERATOR FM-AM SYNTHESIZER", 30, 934, 800, 20, juce::Justification::left);
 }
 void FMEmancipationAudioProcessorEditor::timerCallback()
@@ -665,6 +828,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(lfoSourceSelector, 526, 780, 112, 28);
     fit(lfoPhaseModeButton, 662, 780, 146, 28);
     fit(modulationEnvelopesButton, 826, 780, 150, 28);
+    fit(filterButton, 992, 780, 102, 28);
     fit(lfo2Waveform, 311, 846, 116, 31);
     fit(lfo2Rate, 447, 832, 105, 80);
     fit(lfo2Sync, 563, 846, 99, 31);
