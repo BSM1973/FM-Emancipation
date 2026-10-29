@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "PluginEditor.h"
 #include <cmath>
 namespace {
 constexpr double twoPi = juce::MathConstants<double>::twoPi;
@@ -111,4 +112,9 @@ void FMEmancipationAudioProcessor::setStateInformation(const void* data, int siz
     if (xml && xml->hasTagName(parameters.state.getType()))
         parameters.replaceState(juce::ValueTree::fromXml(*xml));
 }
+juce::AudioProcessorEditor* FMEmancipationAudioProcessor::createEditor()
+{
+    return new FMEmancipationAudioProcessorEditor(*this);
+}
+
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new FMEmancipationAudioProcessor(); }
