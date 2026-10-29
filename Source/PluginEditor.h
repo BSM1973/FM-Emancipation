@@ -8,6 +8,9 @@ public:
 private:
     FMEmancipationAudioProcessor& processor;
     juce::Slider algorithm, fmDepth, amDepth, output;
+    juce::Slider lfoRate, lfoDepth;
+    juce::ComboBox lfoWaveform, lfoSync, lfoDivision, lfoDestination;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lfoComboAttachments;
     juce::ComboBox presetSelector;
     juce::TextButton savePresetButton { "ENREGISTRER" };
     juce::TextButton loadPresetButton { "CHARGER" };
