@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <atomic>
+#include <vector>
 class FMEmancipationAudioProcessor final : public juce::AudioProcessor
 {
 public:
@@ -51,6 +52,14 @@ private:
     };
     std::array<Voice, 16> voices {};
     double rate = 44100.0;
+    // Global stereo post-synthesis chain, prepared once; no heap allocation
+    // in processBlock, and no effect changes the six-operator voice engine.
+    juce::dsp::Chorus<float> chorusEffect;
+    juce::Reverb reverbEffect;
+    std::array<std::vector<float>, 2> delayMemory;
+    int delayWriteIndex = 0;
+    bool chorusWasEnabled = false, delayWasEnabled = false, reverbWasEnabled = false;
+    juce::SmoothedValue<float> delayTimeSmoother, delayFeedbackSmoother, delayMixSmoother;
     juce::SmoothedValue<double, juce::ValueSmoothingTypes::Multiplicative> cutoffSmoother;
     juce::SmoothedValue<double> resonanceSmoother, filterMixSmoother;
     int lastFilterMode = 0;

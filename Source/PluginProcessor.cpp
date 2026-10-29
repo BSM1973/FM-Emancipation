@@ -53,6 +53,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("filterLfo2Cutoff", "LFO 2 to filter cutoff", -1.0f, 1.0f, 0.0f);
     f("filterLfo1Resonance", "LFO 1 to filter resonance", -1.0f, 1.0f, 0.0f);
     f("filterLfo2Resonance", "LFO 2 to filter resonance", -1.0f, 1.0f, 0.0f);
+    // All effects default to bypass; no older preset is altered.
+    f("fxChorusEnabled", "Chorus on", 0.0f, 1.0f, 0.0f);
+    f("fxChorusRate", "Chorus rate Hz", 0.1f, 8.0f, 0.85f);
+    f("fxChorusDepth", "Chorus depth", 0.0f, 1.0f, 0.4f);
+    f("fxChorusMix", "Chorus mix", 0.0f, 1.0f, 0.3f);
+    f("fxDelayEnabled", "Stereo delay on", 0.0f, 1.0f, 0.0f);
+    f("fxDelayTime", "Delay free time seconds", 0.05f, 1.5f, 0.375f);
+    f("fxDelayFeedback", "Delay feedback", 0.0f, 0.85f, 0.32f);
+    f("fxDelayMix", "Delay mix", 0.0f, 1.0f, 0.3f);
+    f("fxDelaySync", "Delay tempo sync", 0.0f, 1.0f, 0.0f);
+    f("fxDelayDivision", "Delay musical division", 0.0f, 5.0f, 2.0f);
+    f("fxDelayPingPong", "Ping pong delay", 0.0f, 1.0f, 1.0f);
+    f("fxReverbEnabled", "Reverb on", 0.0f, 1.0f, 0.0f);
+    f("fxReverbSize", "Reverb room size", 0.0f, 1.0f, 0.55f);
+    f("fxReverbDamping", "Reverb damping", 0.0f, 1.0f, 0.45f);
+    f("fxReverbWidth", "Reverb stereo width", 0.0f, 1.0f, 1.0f);
+    f("fxReverbMix", "Reverb wet mix", 0.0f, 1.0f, 0.25f);
     // The LFO defaults to OFF and does not alter existing sessions.
     f("lfoWave", "LFO waveform", 0.0f, 3.0f, 0.0f);
     f("lfoRate", "LFO free rate (Hz)", 0.05f, 20.0f, 5.0f);
@@ -118,7 +135,7 @@ bool FMEmancipationAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) 
     return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         || l.getMainOutputChannelSet() == juce::AudioChannelSet::mono();
 }
-void FMEmancipationAudioProcessor::prepareToPlay(double sr, int)
+void FMEmancipationAudioProcessor::prepareToPlay(double sr, int maximumExpectedSamplesPerBlock)
 {
     rate = sr > 0 ? sr : 44100.0;
     voices = {};
@@ -135,6 +152,26 @@ void FMEmancipationAudioProcessor::prepareToPlay(double sr, int)
     filterMixSmoother.setCurrentAndTargetValue(
         parameters.getRawParameterValue("filterMix")->load());
     lastFilterMode = 0;
+    // Allocate all effect storage here, not on the real-time audio thread.
+    const auto outputChannels = (juce::uint32)juce::jmax(1, getTotalNumOutputChannels());
+    chorusEffect.prepare({ rate, (juce::uint32)juce::jmax(1, maximumExpectedSamplesPerBlock),
+                           outputChannels });
+    chorusEffect.reset();
+    chorusEffect.setCentreDelay(8.0f);
+    chorusEffect.setFeedback(0.08f);
+    reverbEffect.setSampleRate(rate);
+    reverbEffect.reset();
+    const int memorySamples = (int)std::ceil(rate * 4.0) + 4;
+    for (auto& channel : delayMemory)
+        channel.assign((size_t)memorySamples, 0.0f);
+    delayWriteIndex = 0;
+    chorusWasEnabled = delayWasEnabled = reverbWasEnabled = false;
+    delayTimeSmoother.reset(rate, 0.04);
+    delayFeedbackSmoother.reset(rate, 0.025);
+    delayMixSmoother.reset(rate, 0.025);
+    delayTimeSmoother.setCurrentAndTargetValue(0.375f * (float)rate);
+    delayFeedbackSmoother.setCurrentAndTargetValue(0.32f);
+    delayMixSmoother.setCurrentAndTargetValue(0.3f);
 }
 void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
@@ -521,6 +558,88 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         const double fraction = (offsetPhase - twoPi * std::floor(offsetPhase / twoPi)) / twoPi;
         lfoDisplayPhases[i].store((float)fraction, std::memory_order_relaxed);
     }
+
+    // Post-synthesis stereo effects: Chorus -> Delay -> Reverb. Each module
+    // has an independent bypass and is inaudible for all previous presets.
+    const bool chorusOn = param("fxChorusEnabled") >= 0.5f;
+    if (chorusOn) {
+        chorusEffect.setRate(param("fxChorusRate"));
+        chorusEffect.setDepth(param("fxChorusDepth"));
+        chorusEffect.setMix(param("fxChorusMix"));
+        juce::dsp::AudioBlock<float> audioBlock(buffer);
+        juce::dsp::ProcessContextReplacing<float> context(audioBlock);
+        chorusEffect.process(context);
+    } else if (chorusWasEnabled) {
+        chorusEffect.reset();
+    }
+    chorusWasEnabled = chorusOn;
+
+    const bool delayOn = param("fxDelayEnabled") >= 0.5f;
+    if (delayOn && !delayMemory[0].empty()) {
+        static constexpr double beatLengths[] = { 4.0, 2.0, 1.0, 0.5, 0.75, 1.0 / 3.0 };
+        const bool sync = param("fxDelaySync") >= 0.5f;
+        const int division = juce::jlimit(0, 5, (int)std::lround(param("fxDelayDivision")));
+        const double seconds = sync ? beatLengths[division] * 60.0 / juce::jmax(20.0, hostBpm)
+                                    : (double)param("fxDelayTime");
+        const int ringSize = (int)delayMemory[0].size();
+        delayTimeSmoother.setTargetValue((float)juce::jlimit(2.0, (double)ringSize - 3.0,
+                                                          seconds * rate));
+        delayFeedbackSmoother.setTargetValue(param("fxDelayFeedback"));
+        delayMixSmoother.setTargetValue(param("fxDelayMix"));
+        const int channels = juce::jmin(2, buffer.getNumChannels());
+        const bool pingPong = channels == 2 && param("fxDelayPingPong") >= 0.5f;
+        for (int sampleIndex = 0; sampleIndex < buffer.getNumSamples(); ++sampleIndex) {
+            const float delaySamples = delayTimeSmoother.getNextValue();
+            const float feedback = delayFeedbackSmoother.getNextValue();
+            const float wet = delayMixSmoother.getNextValue();
+            float readPosition = (float)delayWriteIndex - delaySamples;
+            if (readPosition < 0.0f) readPosition += (float)ringSize;
+            const int index0 = (int)readPosition;
+            const int index1 = (index0 + 1 == ringSize) ? 0 : index0 + 1;
+            const float blend = readPosition - (float)index0;
+            const float echoL = delayMemory[0][(size_t)index0] * (1.0f - blend)
+                              + delayMemory[0][(size_t)index1] * blend;
+            const float echoR = channels == 2
+                ? delayMemory[1][(size_t)index0] * (1.0f - blend)
+                + delayMemory[1][(size_t)index1] * blend : echoL;
+            const float dryL = buffer.getSample(0, sampleIndex);
+            const float dryR = channels == 2 ? buffer.getSample(1, sampleIndex) : dryL;
+            delayMemory[0][(size_t)delayWriteIndex] =
+                (pingPong ? 0.5f * (dryL + dryR) + feedback * echoR
+                          : dryL + feedback * echoL);
+            if (channels == 2)
+                delayMemory[1][(size_t)delayWriteIndex] =
+                    pingPong ? feedback * echoL : dryR + feedback * echoR;
+            buffer.setSample(0, sampleIndex, dryL + wet * (echoL - dryL));
+            if (channels == 2)
+                buffer.setSample(1, sampleIndex, dryR + wet * (echoR - dryR));
+            if (++delayWriteIndex == ringSize) delayWriteIndex = 0;
+        }
+    } else if (delayWasEnabled) {
+        for (auto& channel : delayMemory) std::fill(channel.begin(), channel.end(), 0.0f);
+        delayWriteIndex = 0;
+    }
+    delayWasEnabled = delayOn;
+
+    const bool reverbOn = param("fxReverbEnabled") >= 0.5f;
+    if (reverbOn) {
+        juce::Reverb::Parameters settings;
+        settings.roomSize = param("fxReverbSize");
+        settings.damping = param("fxReverbDamping");
+        settings.width = param("fxReverbWidth");
+        settings.wetLevel = param("fxReverbMix");
+        settings.dryLevel = 1.0f - settings.wetLevel;
+        settings.freezeMode = 0.0f;
+        reverbEffect.setParameters(settings);
+        if (buffer.getNumChannels() > 1)
+            reverbEffect.processStereo(buffer.getWritePointer(0), buffer.getWritePointer(1),
+                                       buffer.getNumSamples());
+        else
+            reverbEffect.processMono(buffer.getWritePointer(0), buffer.getNumSamples());
+    } else if (reverbWasEnabled) {
+        reverbEffect.reset();
+    }
+    reverbWasEnabled = reverbOn;
 }
 const juce::String FMEmancipationAudioProcessor::getProgramName(int index)
 {
@@ -556,6 +675,23 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("filterLfo2Cutoff", 0.0f);
     set("filterLfo1Resonance", 0.0f);
     set("filterLfo2Resonance", 0.0f);
+    // Factory programs always select an entirely bypassed effects chain.
+    set("fxChorusEnabled", 0.0f);
+    set("fxChorusRate", 0.85f);
+    set("fxChorusDepth", 0.4f);
+    set("fxChorusMix", 0.3f);
+    set("fxDelayEnabled", 0.0f);
+    set("fxDelayTime", 0.375f);
+    set("fxDelayFeedback", 0.32f);
+    set("fxDelayMix", 0.3f);
+    set("fxDelaySync", 0.0f);
+    set("fxDelayDivision", 2.0f);
+    set("fxDelayPingPong", 1.0f);
+    set("fxReverbEnabled", 0.0f);
+    set("fxReverbSize", 0.55f);
+    set("fxReverbDamping", 0.45f);
+    set("fxReverbWidth", 1.0f);
+    set("fxReverbMix", 0.25f);
     set("lfoWave", 0.0f);
     set("lfoRate", 5.0f);
     set("lfoSync", 0.0f);

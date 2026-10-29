@@ -468,6 +468,143 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
 };
 
+
+class FMStereoEffectsPanel final : public juce::Component
+{
+public:
+    explicit FMStereoEffectsPanel(FMEmancipationAudioProcessor& processor)
+    {
+        setSize(1000, 570);
+        static constexpr const char* sliderIds[] = {
+            "fxChorusRate", "fxChorusDepth", "fxChorusMix",
+            "fxDelayTime", "fxDelayFeedback", "fxDelayMix",
+            "fxReverbSize", "fxReverbDamping", "fxReverbWidth", "fxReverbMix"
+        };
+        for (int i = 0; i < 10; ++i) {
+            auto& slider = knobs[(size_t)i];
+            slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 76, 20);
+            slider.setColour(juce::Slider::rotarySliderFillColourId,
+                i < 3 ? juce::Colour(0xff72d6f5)
+                      : i < 6 ? juce::Colour(0xff8caaf9) : juce::Colour(0xff78c9fa));
+            slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff37576b));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colour(0xffd4f2ff));
+            slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffc4e5ff));
+            slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+            slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+            addAndMakeVisible(slider);
+            sliderAttachments.push_back(
+                std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                    processor.parameters, sliderIds[i], slider));
+        }
+        knobs[0].setTextValueSuffix(" Hz");
+        knobs[3].setTextValueSuffix(" s");
+        static constexpr const char* switchIds[] = {
+            "fxChorusEnabled", "fxDelayEnabled", "fxReverbEnabled",
+            "fxDelaySync", "fxDelayDivision", "fxDelayPingPong"
+        };
+        for (int i = 0; i < 6; ++i) {
+            auto& combo = switches[(size_t)i];
+            if (i == 4)
+                combo.addItemList({ "1 mesure", "1/2", "1/4", "1/8",
+                                    "1/8 pointée", "1/8 triolet" }, 1);
+            else if (i == 3)
+                combo.addItemList({ "Libre", "Tempo" }, 1);
+            else if (i == 5)
+                combo.addItemList({ "Stéréo", "Ping-pong" }, 1);
+            else
+                combo.addItemList({ "Désactivé", "Activé" }, 1);
+            combo.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+            combo.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+            combo.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+            addAndMakeVisible(combo);
+            comboAttachments.push_back(
+                std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+                    processor.parameters, switchIds[i], combo));
+        }
+        knobs[3].setTooltip("Temps libre du delay (secondes) ; en mode Tempo, utiliser DIVISION");
+        knobs[4].setTooltip("Quantité de répétitions du delay, avec limitation à 85 %");
+        knobs[9].setTooltip("Dosage de la réverbération stéréo");
+        switches[5].setTooltip("Mode stéréo classique ou alternance gauche/droite");
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(0xff192b3a));
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(24.0f, juce::Font::bold));
+        g.drawText("EFFETS STÉRÉO", 24, 12, 650, 34, juce::Justification::centredLeft);
+        g.setFont(juce::FontOptions(12.0f));
+        g.setColour(juce::Colour(0xffafc9dc));
+        g.drawText("CHORUS  →  DELAY STÉRÉO  →  RÉVERBÉRATION   •   Chaque effet possède son propre interrupteur.",
+                   24, 48, 940, 22, juce::Justification::centredLeft);
+
+        static constexpr const char* names[] = { "CHORUS", "DELAY STÉRÉO", "RÉVERBÉRATION" };
+        static constexpr int top[] = { 79, 227, 399 };
+        static constexpr int height[] = { 137, 161, 146 };
+        const auto blue = juce::Colour(0xff78c9fa);
+        for (int section = 0; section < 3; ++section) {
+            const int y = top[section];
+            g.setColour(juce::Colour(section == 1 ? 0xff243a50 : 0xff223849));
+            g.fillRoundedRectangle(16.0f, (float)y, 968.0f, (float)height[section], 7.0f);
+            g.setColour(juce::Colour(0xff45647c));
+            g.drawRoundedRectangle(16.0f, (float)y, 968.0f, (float)height[section], 7.0f, 1.0f);
+            g.setColour(section == 1 ? juce::Colour(0xffa5b8ff) : blue);
+            g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+            g.drawText(names[section], 34, y + 8, 500, 26, juce::Justification::centredLeft);
+            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            g.setColour(juce::Colour(0xffbfdced));
+            g.drawText("ÉTAT", 37, y + 44, 150, 16, juce::Justification::centred);
+        }
+
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.setColour(juce::Colour(0xffbfdced));
+        static constexpr const char* chorusLabels[] = { "VITESSE", "PROFONDEUR", "MÉLANGE" };
+        for (int i = 0; i < 3; ++i)
+            g.drawText(chorusLabels[i], 222 + i * 165, 101, 120, 18, juce::Justification::centred);
+
+        static constexpr const char* delayLabels[] = { "TEMPS", "FEEDBACK", "MÉLANGE" };
+        for (int i = 0; i < 3; ++i)
+            g.drawText(delayLabels[i], 205 + i * 142, 251, 110, 18, juce::Justification::centred);
+        g.drawText("SYNC", 645, 254, 106, 16, juce::Justification::centred);
+        g.drawText("DIVISION", 755, 254, 108, 16, juce::Justification::centred);
+        g.drawText("MODE", 870, 254, 108, 16, juce::Justification::centred);
+
+        static constexpr const char* reverbLabels[] = { "TAILLE", "AMORTISSEMENT", "LARGEUR", "MÉLANGE" };
+        for (int i = 0; i < 4; ++i)
+            g.drawText(reverbLabels[i], 220 + i * 180, 421, 140, 18, juce::Justification::centred);
+
+        g.setColour(juce::Colour(0xff8baec5));
+        g.setFont(juce::FontOptions(11.0f));
+        g.drawText("Les effets sont désactivés par défaut pour conserver les presets d'origine.",
+                   25, 547, 950, 18, juce::Justification::centredLeft);
+    }
+
+    void resized() override
+    {
+        switches[0].setBounds(38, 145, 150, 32); // CHORUS
+        switches[1].setBounds(38, 302, 150, 32); // DELAY
+        switches[2].setBounds(38, 468, 150, 32); // REVERB
+        for (int i = 0; i < 3; ++i)
+            knobs[(size_t)i].setBounds(230 + i * 165, 122, 105, 86);
+        for (int i = 0; i < 3; ++i)
+            knobs[(size_t)(3 + i)].setBounds(210 + i * 142, 275, 102, 87);
+        knobs[6].setBounds(226, 441, 110, 86);
+        knobs[7].setBounds(406, 441, 110, 86);
+        knobs[8].setBounds(586, 441, 110, 86);
+        knobs[9].setBounds(766, 441, 110, 86);
+        switches[3].setBounds(645, 296, 108, 32); // SYNC
+        switches[4].setBounds(758, 296, 110, 32); // DIVISION
+        switches[5].setBounds(874, 296, 105, 32); // PING PONG
+    }
+
+private:
+    std::array<juce::Slider, 10> knobs;
+    std::array<juce::ComboBox, 6> switches;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAttachments;
+};
+
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processor(p)
 {
@@ -566,6 +703,15 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             getLocalArea(&filterButton, filterButton.getLocalBounds()), this);
     };
     addAndMakeVisible(filterButton);
+    effectsButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    effectsButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    effectsButton.setTooltip("Chorus, delay stéréo / ping-pong et réverbération");
+    effectsButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<FMStereoEffectsPanel>(processor),
+            getLocalArea(&effectsButton, effectsButton.getLocalBounds()), this);
+    };
+    addAndMakeVisible(effectsButton);
     updateLfoSourceVisibility();
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
@@ -875,6 +1021,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(lfoPhaseModeButton, 662, 780, 146, 28);
     fit(modulationEnvelopesButton, 826, 780, 150, 28);
     fit(filterButton, 992, 780, 102, 28);
+    fit(effectsButton, 1102, 780, 83, 28);
     fit(lfo2Waveform, 311, 846, 116, 31);
     fit(lfo2Rate, 447, 832, 105, 80);
     fit(lfo2Sync, 563, 846, 99, 31);
