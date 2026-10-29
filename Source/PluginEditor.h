@@ -12,7 +12,9 @@ private:
     juce::TextButton savePresetButton { "ENREGISTRER" };
     juce::TextButton loadPresetButton { "CHARGER" };
     juce::ComboBox userPresetSelector;
-    juce::TextEditor presetSearch; 
+    juce::TextEditor presetSearch;
+    juce::TextButton clearPresetSearch { "EFFACER" };
+    juce::ComboBox presetCategory; 
     juce::Array<juce::File> filteredPresetFiles;
     void refreshUserPresets();
     juce::Array<juce::File> userPresetFiles;
