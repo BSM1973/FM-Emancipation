@@ -76,6 +76,31 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText(i < 2 ? "CARRIER" : "FM MOD", x + 150, 358, 80, 23, juce::Justification::centred);
         g.drawText("Frequency ratio", x + 18, 395, 195, 20, juce::Justification::left);
         g.drawText("Output level", x + 18, 530, 195, 20, juce::Justification::left);
+        // Live ADSR preview, using the same parameter values as the knobs.
+        const auto envValue = [&](const juce::String& key) {
+            return processor.parameters.getRawParameterValue(key + juce::String(i))->load();
+        };
+        const float attack = envValue("opAttack");
+        const float decay = envValue("opDecay");
+        const float sustain = envValue("opSustain");
+        const float release = envValue("opRelease");
+        const float total = attack + decay + 0.35f + release;
+        const float x0 = (float)x + 20.0f, y0 = 665.0f;
+        const float width = 198.0f, height = 53.0f;
+        const float xa = x0 + width * attack / total;
+        const float xd = xa + width * decay / total;
+        const float xs = xd + width * 0.35f / total;
+        const float top = y0 - height, sustainY = y0 - height * sustain;
+        juce::Path envelopePath;
+        envelopePath.startNewSubPath(x0, y0);
+        envelopePath.lineTo(xa, top);
+        envelopePath.lineTo(xd, sustainY);
+        envelopePath.lineTo(xs, sustainY);
+        envelopePath.lineTo(x0 + width, y0);
+        g.setColour(juce::Colour(0xff213b4b));
+        g.fillRoundedRectangle(x0 - 3, top - 4, width + 6, height + 9, 4.0f);
+        g.setColour(juce::Colour(0xff70d6f5));
+        g.strokePath(envelopePath, juce::PathStrokeType(2.0f));
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         const char* adsrLabels[] = { "A", "D", "S", "R" };
         for (int k = 0; k < 4; ++k)
