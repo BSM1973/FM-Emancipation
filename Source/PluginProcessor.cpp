@@ -133,7 +133,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             const double sum = carrierSum / juce::jmax(1, carrierCount);
             const double amSource = 0.5 + 0.5 * op[5];
-            mix += (sum / carrierCount) * ((1.0 - am) + am * amSource) * v.envelope * v.velocity;
+            mix += sum * ((1.0 - am) + am * amSource) * v.envelope * v.velocity;
         }
         const float sample = (float)(std::tanh(mix * output));
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
