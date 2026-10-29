@@ -182,6 +182,8 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
                 if (!target.replaceWithData(data.getData(), data.getSize()))
                     juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                         "FM Emancipation", "Impossible d'enregistrer le preset.", "OK");
+                else
+                    refreshUserPresets();
             });
     };
     addAndMakeVisible(savePresetButton);
@@ -352,7 +354,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(userPresetSelector, 54, 210, 270, 32);
     fit(presetSearch, 332, 210, 170, 32);
     fit(clearPresetSearch, 510, 210, 80, 32);
-    fit(presetCategory, 54, 250, 536, 30);
+    fit(presetCategory, 602, 209, 180, 30);
     fit(algorithm, 795, 151, 94, 79);
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
