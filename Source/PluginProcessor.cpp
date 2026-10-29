@@ -20,6 +20,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     for (int i = 0; i < 6; ++i) {
         f("ratio" + juce::String(i), "OP " + juce::String(i + 1) + " ratio", 0.25f, 16, i == 2 ? 3.0f : 1.0f);
         f("level" + juce::String(i), "OP " + juce::String(i + 1) + " level", 0, 1, i < 2 ? 0.8f : 0.5f);
+        f("opAttack" + juce::String(i), "OP " + juce::String(i + 1) + " attack", 0.001f, 5.0f, 0.01f);
+        f("opDecay" + juce::String(i), "OP " + juce::String(i + 1) + " decay", 0.001f, 8.0f, 0.25f);
+        f("opSustain" + juce::String(i), "OP " + juce::String(i + 1) + " sustain", 0.0f, 1.0f, 1.0f);
+        f("opRelease" + juce::String(i), "OP " + juce::String(i + 1) + " release", 0.01f, 8.0f, 0.35f);
     }
     return { p.begin(), p.end() };
 }
@@ -43,10 +47,14 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const double output = param("output");
     const double attack = param("attack");
     const double release = param("release");
-    double ratios[6], levels[6];
+    double ratios[6], levels[6], opAttack[6], opDecay[6], opSustain[6], opRelease[6];
     for (int i = 0; i < 6; ++i) {
         ratios[i] = param("ratio" + juce::String(i));
         levels[i] = param("level" + juce::String(i));
+        opAttack[i] = param("opAttack" + juce::String(i));
+        opDecay[i] = param("opDecay" + juce::String(i));
+        opSustain[i] = param("opSustain" + juce::String(i));
+        opRelease[i] = param("opRelease" + juce::String(i));
     }
     juce::MidiBuffer::Iterator iterator(midi);
     juce::MidiMessage message;
@@ -98,8 +106,22 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             double carrierSum = 0.0;
             int carrierCount = 0;
             for (int i = 5; i >= 0; --i) {
+                auto& env = v.operatorEnvelope[i];
+                auto& stage = v.operatorStage[i];
+                if (v.releasing && stage != 3) stage = 3;
+                if (stage == 0) {
+                    env = juce::jmin(1.0, env + 1.0 / (rate * opAttack[i]));
+                    if (env >= 1.0) stage = 1;
+                } else if (stage == 1) {
+                    env = juce::jmax(opSustain[i], env - (1.0 - opSustain[i]) / (rate * opDecay[i]));
+                    if (env <= opSustain[i]) stage = 2;
+                } else if (stage == 2) {
+                    env = opSustain[i];
+                } else {
+                    env = juce::jmax(0.0, env - 1.0 / (rate * opRelease[i]));
+                }
                 const double wave = std::sin(v.phase[i] + modulation[i] * depth);
-                op[i] = wave * levels[i];
+                op[i] = wave * levels[i] * env;
                 if (route[i] < 0) {
                     carrierSum += op[i];
                     ++carrierCount;
