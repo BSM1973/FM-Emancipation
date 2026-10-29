@@ -26,6 +26,20 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
         for (auto* slider : { &opAttacks[i], &opDecays[i], &opSustains[i], &opReleases[i] })
             slider->onValueChange = [this] { repaint(); };
     }
+    for (int i = 0; i < processor.getNumPrograms(); ++i)
+        presetSelector.addItem(processor.getProgramName(i), i + 1);
+    presetSelector.setSelectedId(processor.getCurrentProgram() + 1, juce::dontSendNotification);
+    presetSelector.onChange = [this] {
+        const int index = presetSelector.getSelectedId() - 1;
+        if (index >= 0) {
+            processor.setCurrentProgram(index);
+            repaint();
+        }
+    };
+    presetSelector.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff1b2a38));
+    presetSelector.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+    presetSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+    addAndMakeVisible(presetSelector);
     setSize(1496, 990);
     setResizable(true, true);
     setResizeLimits(900, 650, 2200, 1500);
@@ -121,6 +135,7 @@ void FMEmancipationAudioProcessorEditor::resized()
         s.setBounds(juce::Rectangle<int>(x, y, w, h)
             .toFloat().transformedBy(juce::AffineTransform::scale(getWidth()/1496.0f, getHeight()/990.0f)).getSmallestIntegerContainer());
     };
+    fit(presetSelector, 54, 163, 510, 39);
     fit(algorithm, 795, 151, 94, 79);
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
