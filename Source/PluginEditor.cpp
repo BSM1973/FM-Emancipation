@@ -62,6 +62,29 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             });
     };
     addAndMakeVisible(savePresetButton);
+    loadPresetButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    loadPresetButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    loadPresetButton.onClick = [this] {
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Charger un preset FM Emancipation",
+            juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                .getChildFile("FM Emancipation"), "*.fme");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [this, chooser](const juce::FileChooser& fc) {
+                const auto source = fc.getResult();
+                if (source == juce::File()) return;
+                juce::MemoryBlock data;
+                if (!source.loadFileAsData(data) || data.isEmpty()) {
+                    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                        "FM Emancipation", "Impossible de lire ce fichier preset.", "OK");
+                    return;
+                }
+                processor.setStateInformation(data.getData(), (int)data.getSize());
+                presetSelector.setSelectedId(processor.getCurrentProgram() + 1, juce::dontSendNotification);
+                repaint();
+            });
+    };
+    addAndMakeVisible(loadPresetButton);
     setSize(1496, 990);
     setResizable(true, true);
     setResizeLimits(900, 650, 2200, 1500);
@@ -157,8 +180,9 @@ void FMEmancipationAudioProcessorEditor::resized()
         s.setBounds(juce::Rectangle<int>(x, y, w, h)
             .toFloat().transformedBy(juce::AffineTransform::scale(getWidth()/1496.0f, getHeight()/990.0f)).getSmallestIntegerContainer());
     };
-    fit(presetSelector, 54, 163, 380, 39);
-    fit(savePresetButton, 442, 163, 150, 39);
+    fit(presetSelector, 54, 163, 270, 39);
+    fit(savePresetButton, 332, 163, 130, 39);
+    fit(loadPresetButton, 470, 163, 120, 39);
     fit(algorithm, 795, 151, 94, 79);
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
