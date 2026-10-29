@@ -37,7 +37,7 @@ private:
     };
     std::array<Voice, 16> voices {};
     double rate = 44100.0;
-    double lfoPhase = 0.0;
+    std::array<double, 2> lfoPhases {}; // LFO 1 and LFO 2 run independently
     std::array<double, 16> pitchBendSemitones {};
     int currentProgram = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FMEmancipationAudioProcessor)
