@@ -96,16 +96,43 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     // 1/8, 1/16, dotted 1/8, and triplet 1/8.
     static constexpr double lfoBeatsPerCycle[] = { 4.0, 2.0, 1.0, 0.5, 0.25, 0.75, 1.0 / 3.0 };
     double hostBpm = 120.0;
+    double hostPpq = 0.0;
+    bool hasHostPpq = false;
+    bool transportPlaying = true;
     if (auto* playHead = getPlayHead()) {
         if (const auto position = playHead->getPosition()) {
             if (const auto bpm = position->getBpm())
                 if (std::isfinite(*bpm) && *bpm > 0.0) hostBpm = *bpm;
+            if (const auto ppq = position->getPpqPosition()) {
+                if (std::isfinite(*ppq)) {
+                    hostPpq = *ppq;
+                    hasHostPpq = true;
+                }
+            }
+            transportPlaying = position->getIsPlaying().value_or(true);
         }
     }
+
+    // When the host exposes musical time, lock each synced LFO to the project
+    // timeline at the beginning of every block. Seeking and arrangement loops
+    // thus relocate the LFO phase, without affecting free-running oscillators.
+    const auto lockToHost = [&](int index, bool synced, int division) {
+        if (!synced || !hasHostPpq) return;
+        double cycles = std::fmod(hostPpq / lfoBeatsPerCycle[division], 1.0);
+        if (cycles < 0.0) cycles += 1.0;
+        lfoPhases[(size_t)index] = twoPi * cycles;
+    };
+    lockToHost(0, lfoSync, lfoDivision);
+    lockToHost(1, lfo2Sync, lfo2Division);
+
     const double lfoHz = lfoSync ? hostBpm / (60.0 * lfoBeatsPerCycle[lfoDivision]) : lfoRate;
-    const double lfoPhaseStep = twoPi * juce::jlimit(0.0, rate * 0.45, lfoHz) / rate;
     const double lfo2Hz = lfo2Sync ? hostBpm / (60.0 * lfoBeatsPerCycle[lfo2Division]) : lfo2Rate;
-    const double lfo2PhaseStep = twoPi * juce::jlimit(0.0, rate * 0.45, lfo2Hz) / rate;
+    const auto phaseIncrement = [&](double hz, bool synced) {
+        if (synced && hasHostPpq && !transportPlaying) return 0.0;
+        return twoPi * juce::jlimit(0.0, rate * 0.45, hz) / rate;
+    };
+    const double lfoPhaseStep = phaseIncrement(lfoHz, lfoSync);
+    const double lfo2PhaseStep = phaseIncrement(lfo2Hz, lfo2Sync);
     double ratios[6], levels[6], opAttack[6], opDecay[6], opSustain[6], opRelease[6];
     for (int i = 0; i < 6; ++i) {
         ratios[i] = param("ratio" + juce::String(i));
