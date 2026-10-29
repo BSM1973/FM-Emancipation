@@ -17,6 +17,29 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     add(fmDepth, "fmDepth", false);
     add(amDepth, "amDepth", false);
     add(output, "output", false);
+    add(lfoRate, "lfoRate", false);
+    add(lfoDepth, "lfoDepth", false);
+    auto addLfoCombo = [&](juce::ComboBox& box, const juce::String& parameterID) {
+        box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+        box.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+        box.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+        addAndMakeVisible(box);
+        lfoComboAttachments.push_back(
+            std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+                processor.parameters, parameterID, box));
+    };
+    lfoWaveform.addItemList({ "Sinus", "Triangle", "Scie", "Carree" }, 1);
+    lfoSync.addItemList({ "Libre", "Tempo" }, 1);
+    lfoDivision.addItemList({ "1 mesure", "1/2", "1/4", "1/8", "1/16", "1/8 pointee", "1/8 triolet" }, 1);
+    lfoDestination.addItemList({ "Desactive", "Vibrato", "Tremolo", "Profondeur FM", "Profondeur AM" }, 1);
+    addLfoCombo(lfoWaveform, "lfoWave");
+    addLfoCombo(lfoSync, "lfoSync");
+    addLfoCombo(lfoDivision, "lfoDivision");
+    addLfoCombo(lfoDestination, "lfoTarget");
+    lfoRate.setTooltip("Vitesse du LFO en Hz lorsque le mode Libre est selectionne");
+    lfoDepth.setTooltip("Intensite de la modulation LFO, de 0 a 100 %");
+    lfoDivision.setTooltip("Duree d'un cycle synchronise au tempo du DAW");
+    lfoDestination.setTooltip("Destination de modulation du LFO");
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
         add(levels[i], "level" + juce::String(i), true);
@@ -218,7 +241,19 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xff29323b)); g.fillRoundedRectangle(30, 772, 1432, 149, 4);
     g.setColour(line); g.drawRoundedRectangle(30, 772, 1432, 149, 4, 1);
     g.setColour(juce::Colour(0xff8ba6bc)); g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText("MODULATION ENGINE", 48, 785, 400, 20, juce::Justification::left);
+    g.drawText("MODULATION ENGINE", 48, 785, 225, 20, juce::Justification::left);
+    g.setColour(juce::Colour(0xff78c9fa));
+    g.drawText("LFO / MODULATION", 305, 785, 270, 20, juce::Justification::left);
+    g.setColour(juce::Colour(0xffb5c6d6));
+    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    g.drawText("ONDE", 311, 812, 116, 17, juce::Justification::centred);
+    g.drawText("VITESSE", 447, 812, 105, 17, juce::Justification::centred);
+    g.drawText("SYNC", 563, 812, 99, 17, juce::Justification::centred);
+    g.drawText("DIVISION", 675, 812, 106, 17, juce::Justification::centred);
+    g.drawText("INTENSITE", 795, 812, 99, 17, juce::Justification::centred);
+    g.drawText("DESTINATION", 914, 812, 151, 17, juce::Justification::centred);
+    g.setColour(juce::Colour(0xff8ba6bc));
+    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     g.drawText("MASTER OUTPUT", 1030, 785, 400, 20, juce::Justification::left);
     g.drawText("FM EMANCIPATION  /  SIX-OPERATOR FM-AM SYNTHESIZER", 30, 934, 800, 20, juce::Justification::left);
 }
@@ -239,6 +274,12 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
     fit(output, 1190, 819, 100, 100);
+    fit(lfoWaveform, 311, 846, 116, 31);
+    fit(lfoRate, 447, 832, 105, 80);
+    fit(lfoSync, 563, 846, 99, 31);
+    fit(lfoDivision, 675, 846, 106, 31);
+    fit(lfoDepth, 795, 832, 99, 80);
+    fit(lfoDestination, 914, 846, 151, 31);
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
         fit(levels[i], 85 + 238*i, 548, 66, 112);
