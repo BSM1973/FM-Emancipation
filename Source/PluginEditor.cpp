@@ -1,5 +1,79 @@
 #include "PluginEditor.h"
 #include <algorithm>
+
+// Separate dark-blue modulation matrix: displayed only when requested.
+// All 24 controls attach directly to the processor's persistent parameters.
+class FMLfoOperatorMatrix final : public juce::Component
+{
+public:
+    explicit FMLfoOperatorMatrix(FMEmancipationAudioProcessor& processor)
+    {
+        setSize(850, 524);
+        static const char* parameterPrefixes[] = { "lfoOpPitch", "lfoOpLevel", "lfoOpFM", "lfoOpFeedback" };
+        static const char* tooltips[] = {
+            "Bipolaire : variation de hauteur jusqu'a +/- 2 demi-tons",
+            "Bipolaire : modulation du niveau sonore de cet operateur",
+            "Bipolaire : modulation de l'indice FM de cet operateur",
+            "Bipolaire : modulation du feedback de cet operateur"
+        };
+        for (int op = 0; op < 6; ++op) {
+            for (int column = 0; column < 4; ++column) {
+                auto& slider = sliders[(size_t)(op * 4 + column)];
+                slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 62, 18);
+                slider.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff78c9fa));
+                slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff37576b));
+                slider.setColour(juce::Slider::thumbColourId, juce::Colour(0xffc6e9ff));
+                slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffc6e9ff));
+                slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+                slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+                slider.setTooltip(tooltips[column]);
+                addAndMakeVisible(slider);
+                attachments.push_back(
+                    std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                        processor.parameters, juce::String(parameterPrefixes[column]) + juce::String(op), slider));
+            }
+        }
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(0xff192b3a));
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
+        g.drawText("MATRICE DE MODULATION LFO", 22, 14, 780, 32, juce::Justification::left);
+        g.setColour(juce::Colour(0xffc4e5ff));
+        g.setFont(juce::FontOptions(12.0f));
+        g.drawText("Destination : MATRICE (6 OP)  |  Reglages bipolaires : -100 % a +100 %",
+                   22, 48, 805, 22, juce::Justification::left);
+        static const char* headings[] = { "HAUTEUR", "NIVEAU", "FM", "FEEDBACK" };
+        g.setColour(juce::Colour(0xff77bfe6));
+        g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+        for (int column = 0; column < 4; ++column)
+            g.drawText(headings[column], 145 + column * 170, 80, 148, 22, juce::Justification::centred);
+        for (int op = 0; op < 6; ++op) {
+            const int y = 107 + op * 68;
+            g.setColour(juce::Colour(op % 2 == 0 ? 0xff233c4e : 0xff203448));
+            g.fillRoundedRectangle(14.0f, (float)y, 822.0f, 63.0f, 5.0f);
+            g.setColour(juce::Colour(0xffc4e5ff));
+            g.setFont(juce::FontOptions(16.0f, juce::Font::bold));
+            g.drawText("OP " + juce::String(op + 1), 28, y + 18, 103, 26, juce::Justification::centredLeft);
+        }
+    }
+
+    void resized() override
+    {
+        for (int op = 0; op < 6; ++op)
+            for (int column = 0; column < 4; ++column)
+                sliders[(size_t)(op * 4 + column)].setBounds(163 + column * 170,
+                                                              109 + op * 68, 110, 59);
+    }
+
+private:
+    std::array<juce::Slider, 24> sliders;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
+};
+
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processor(p)
 {
@@ -31,7 +105,7 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     lfoWaveform.addItemList({ "Sinus", "Triangle", "Scie", "Carree" }, 1);
     lfoSync.addItemList({ "Libre", "Tempo" }, 1);
     lfoDivision.addItemList({ "1 mesure", "1/2", "1/4", "1/8", "1/16", "1/8 pointee", "1/8 triolet" }, 1);
-    lfoDestination.addItemList({ "Desactive", "Vibrato", "Tremolo", "Profondeur FM", "Profondeur AM" }, 1);
+    lfoDestination.addItemList({ "Desactive", "Vibrato", "Tremolo", "Profondeur FM", "Profondeur AM", "Matrice (6 OP)" }, 1);
     addLfoCombo(lfoWaveform, "lfoWave");
     addLfoCombo(lfoSync, "lfoSync");
     addLfoCombo(lfoDivision, "lfoDivision");
@@ -40,6 +114,15 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     lfoDepth.setTooltip("Intensite de la modulation LFO, de 0 a 100 %");
     lfoDivision.setTooltip("Duree d'un cycle synchronise au tempo du DAW");
     lfoDestination.setTooltip("Destination de modulation du LFO");
+    lfoMatrixButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    lfoMatrixButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    lfoMatrixButton.setTooltip("Ouvrir la matrice LFO vers les six operateurs");
+    lfoMatrixButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<FMLfoOperatorMatrix>(processor),
+            getLocalArea(&lfoMatrixButton, lfoMatrixButton.getLocalBounds()), this);
+    };
+    addAndMakeVisible(lfoMatrixButton);
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
         add(levels[i], "level" + juce::String(i), true);
@@ -280,6 +363,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(lfoDivision, 675, 846, 106, 31);
     fit(lfoDepth, 795, 832, 99, 80);
     fit(lfoDestination, 914, 846, 151, 31);
+    fit(lfoMatrixButton, 1076, 846, 100, 31);
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
         fit(levels[i], 85 + 238*i, 548, 66, 112);
