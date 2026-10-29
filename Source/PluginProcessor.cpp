@@ -116,7 +116,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                     hasHostPpq = true;
                 }
             }
-            transportPlaying = position->getIsPlaying().value_or(true);
+            transportPlaying = position->getIsPlaying();
         }
     }
 
