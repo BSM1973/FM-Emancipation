@@ -9,6 +9,7 @@ private:
     FMEmancipationAudioProcessor& processor;
     juce::Slider algorithm, fmDepth, amDepth, output;
     juce::ComboBox presetSelector;
+    juce::TextButton savePresetButton { "ENREGISTRER" };
     std::array<juce::Slider, 6> ratios, levels;
     std::array<juce::Slider, 6> opAttacks, opDecays, opSustains, opReleases;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
