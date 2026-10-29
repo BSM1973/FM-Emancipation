@@ -48,6 +48,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("filterMix", "Filter wet/dry mix", 0.0f, 1.0f, 1.0f);
     f("filterEnv1", "ENV 1 to filter cutoff", -1.0f, 1.0f, 0.0f);
     f("filterEnv2", "ENV 2 to filter cutoff", -1.0f, 1.0f, 0.0f);
+    // Bipolar independent LFO routings; zero keeps existing presets identical.
+    f("filterLfo1Cutoff", "LFO 1 to filter cutoff", -1.0f, 1.0f, 0.0f);
+    f("filterLfo2Cutoff", "LFO 2 to filter cutoff", -1.0f, 1.0f, 0.0f);
+    f("filterLfo1Resonance", "LFO 1 to filter resonance", -1.0f, 1.0f, 0.0f);
+    f("filterLfo2Resonance", "LFO 2 to filter resonance", -1.0f, 1.0f, 0.0f);
     // The LFO defaults to OFF and does not alter existing sessions.
     f("lfoWave", "LFO waveform", 0.0f, 3.0f, 0.0f);
     f("lfoRate", "LFO free rate (Hz)", 0.05f, 20.0f, 5.0f);
@@ -147,6 +152,12 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     resonanceSmoother.setTargetValue(param("filterResonance"));
     filterMixSmoother.setTargetValue(param("filterMix"));
     const double filterEnvDepth[2] { param("filterEnv1"), param("filterEnv2") };
+    const double filterLfoCutoff[2] {
+        param("filterLfo1Cutoff"), param("filterLfo2Cutoff")
+    };
+    const double filterLfoResonance[2] {
+        param("filterLfo1Resonance"), param("filterLfo2Resonance")
+    };
     if (filterMode != lastFilterMode) {
         // Clear integrators only on topology changes, not on every note/block.
         for (auto& voice : voices)
@@ -457,8 +468,12 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             if (filterMode != 0 && currentFilterMix > 0.0) {
                 // Bipolar modulation from both independent ADSRs; positive
                 // values open the cutoff as the envelope rises.
+                // LFO-to-filter routes work independently of the global LFO
+                // destinations and respect each LFO's velocity-independent
+                // phase, free/tempo sync and per-note retrigger settings.
                 const double octaveOffset = 5.0 * (filterEnvDepth[0] * modEnvelopeValues[0]
-                                                  + filterEnvDepth[1] * modEnvelopeValues[1]);
+                                                  + filterEnvDepth[1] * modEnvelopeValues[1])
+                    + 4.0 * (filterLfoCutoff[0] * mod + filterLfoCutoff[1] * mod2);
                 const double maxCutoff = juce::jmin(18000.0, rate * 0.45);
                 const double cutoffHz = juce::jlimit(20.0, maxCutoff,
                     currentCutoff * (octaveOffset != 0.0 ? std::exp2(octaveOffset) : 1.0));
@@ -466,7 +481,10 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 // Keep the two cascaded 24dB sections from amplifying extreme
                 // resonances excessively; single-stage modes remain expressive.
                 const bool twoStages = filterMode == 2 || filterMode == 4;
-                const double q = 0.70710678 + currentResonance * (twoStages ? 1.8 : 5.0);
+                const double modulatedResonance = juce::jlimit(0.0, 1.0,
+                    currentResonance + 0.5 * (filterLfoResonance[0] * mod
+                                               + filterLfoResonance[1] * mod2));
+                const double q = 0.70710678 + modulatedResonance * (twoStages ? 1.8 : 5.0);
                 const double k = 1.0 / q;
                 auto& first = v.filterIntegrators[0];
                 const auto response = processSvf(voiceSample, g, k, first.ic1eq, first.ic2eq);
@@ -534,6 +552,10 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("filterMix", 1.0f);
     set("filterEnv1", 0.0f);
     set("filterEnv2", 0.0f);
+    set("filterLfo1Cutoff", 0.0f);
+    set("filterLfo2Cutoff", 0.0f);
+    set("filterLfo1Resonance", 0.0f);
+    set("filterLfo2Resonance", 0.0f);
     set("lfoWave", 0.0f);
     set("lfoRate", 5.0f);
     set("lfoSync", 0.0f);
