@@ -131,7 +131,7 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
 }
 void FMEmancipationAudioProcessorEditor::resized()
 {
-    auto fit = [&](juce::Slider& s, int x, int y, int w, int h) {
+    auto fit = [&](juce::Component& s, int x, int y, int w, int h) {
         s.setBounds(juce::Rectangle<int>(x, y, w, h)
             .toFloat().transformedBy(juce::AffineTransform::scale(getWidth()/1496.0f, getHeight()/990.0f)).getSmallestIntegerContainer());
     };
