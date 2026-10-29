@@ -182,8 +182,8 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText("Frequency ratio", x + 18, 395, 195, 20, juce::Justification::left);
         g.drawText("Output level", x + 18, 530, 195, 20, juce::Justification::left);
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-        g.drawText("FB", x + 10, 551, 62, 18, juce::Justification::centred);
-        g.drawText("VEL", x + 162, 551, 70, 18, juce::Justification::centred);
+        g.drawText("FB", x + 4, 551, 58, 18, juce::Justification::centred);
+        g.drawText("VEL", x + 154, 551, 80, 18, juce::Justification::centred);
         g.setFont(juce::FontOptions(13.0f));
         // Live ADSR preview, using the same parameter values as the knobs.
         const auto envValue = [&](const juce::String& key) {
@@ -242,8 +242,8 @@ void FMEmancipationAudioProcessorEditor::resized()
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
         fit(levels[i], 85 + 238*i, 548, 66, 112);
-        fit(feedbackControls[i], 38 + 238*i, 573, 58, 65);
-        fit(velocityControls[i], 172 + 238*i, 573, 58, 65);
+        fit(feedbackControls[i], 36 + 238*i, 573, 44, 65);
+        fit(velocityControls[i], 184 + 238*i, 573, 44, 65);
         fit(waveformControls[i], 46 + 238*i, 660, 206, 26);
         fit(opAttacks[i], 34 + 238*i, 689, 52, 62);
         fit(opDecays[i], 88 + 238*i, 689, 52, 62);
