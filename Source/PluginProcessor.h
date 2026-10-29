@@ -14,7 +14,7 @@ public:
     const juce::String getName() const override { return "FM Emancipation"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override;
     int getNumPrograms() override { return 100; }
     int getCurrentProgram() override { return currentProgram; }
     void setCurrentProgram(int index) override;
@@ -60,6 +60,8 @@ private:
     int delayWriteIndex = 0;
     bool chorusWasEnabled = false, delayWasEnabled = false, reverbWasEnabled = false;
     juce::SmoothedValue<float> delayTimeSmoother, delayFeedbackSmoother, delayMixSmoother;
+    juce::SmoothedValue<float> chorusDepthSmoother, reverbWetSmoother;
+    std::atomic<double> tailHostBpm { 120.0 };
     juce::SmoothedValue<double, juce::ValueSmoothingTypes::Multiplicative> cutoffSmoother;
     juce::SmoothedValue<double> resonanceSmoother, filterMixSmoother;
     int lastFilterMode = 0;

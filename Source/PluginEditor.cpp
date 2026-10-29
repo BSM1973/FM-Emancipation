@@ -469,12 +469,87 @@ private:
 };
 
 
+
+class FMStereoEffectsModulation final : public juce::Component
+{
+public:
+    explicit FMStereoEffectsModulation(FMEmancipationAudioProcessor& processor)
+    {
+        setSize(860, 475);
+        static constexpr const char* sources[] { "Lfo1", "Lfo2", "Env1", "Env2" };
+        static constexpr const char* targets[] { "Chorus", "Delay", "Reverb" };
+        for (int row = 0; row < 4; ++row)
+            for (int col = 0; col < 3; ++col) {
+                auto& slider = knobs[(size_t)(row * 3 + col)];
+                slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+                slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 72, 20);
+                slider.setColour(juce::Slider::rotarySliderFillColourId,
+                    row % 2 ? juce::Colour(0xff9cb3ff) : juce::Colour(0xff70d6f5));
+                slider.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff36576e));
+                slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffc4e5ff));
+                slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+                slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+                addAndMakeVisible(slider);
+                attachments.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                    processor.parameters, juce::String("fxMod") + sources[row] + targets[col], slider));
+            }
+    }
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(0xff192b3a));
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
+        g.drawText("MATRICE DE MODULATION DES EFFETS", 22, 12, 800, 32, juce::Justification::left);
+        g.setFont(juce::FontOptions(12.0f));
+        g.setColour(juce::Colour(0xffafc9dc));
+        g.drawText("Routages bipolaires : -100 % à +100 %. Zéro = désactivé.", 22, 49, 790, 22,
+                   juce::Justification::left);
+        static constexpr const char* cols[] { "PROFONDEUR CHORUS", "FEEDBACK DELAY", "MIX RÉVERBÉRATION" };
+        for (int col = 0; col < 3; ++col) {
+            g.setColour(juce::Colour(0xffc4e5ff));
+            g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+            g.drawText(cols[col], 190 + col * 213, 78, 195, 20, juce::Justification::centred);
+        }
+        static constexpr const char* rows[] { "LFO 1", "LFO 2", "ENV 1", "ENV 2" };
+        for (int row = 0; row < 4; ++row) {
+            const int top = 104 + row * 84;
+            g.setColour(juce::Colour(row % 2 ? 0xff203749 : 0xff253d50));
+            g.fillRoundedRectangle(15.0f, (float)top, 827.0f, 80.0f, 5.0f);
+            g.setColour(row % 2 ? juce::Colour(0xff9cb3ff) : juce::Colour(0xff70d6f5));
+            g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
+            g.drawText(rows[row], 31, top + 24, 125, 26, juce::Justification::left);
+        }
+        g.setColour(juce::Colour(0xffafc9dc));
+        g.setFont(juce::FontOptions(11.0f));
+        g.drawText("Les LFO suivent le tempo ou les notes MIDI ; les enveloppes suivent les voix.",
+                   22, 450, 816, 18, juce::Justification::left);
+    }
+    void resized() override
+    {
+        for (int row = 0; row < 4; ++row)
+            for (int col = 0; col < 3; ++col)
+                knobs[(size_t)(row * 3 + col)].setBounds(230 + col * 213,
+                                                        108 + row * 84, 108, 73);
+    }
+private:
+    std::array<juce::Slider, 12> knobs;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
+};
 class FMStereoEffectsPanel final : public juce::Component
 {
 public:
     explicit FMStereoEffectsPanel(FMEmancipationAudioProcessor& processor)
     {
         setSize(1000, 570);
+        matrixButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+        matrixButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+        matrixButton.setTooltip("Matrice LFO/ENV vers Chorus, Delay et Réverbération");
+        matrixButton.onClick = [this, &processor] {
+            juce::CallOutBox::launchAsynchronously(
+                std::make_unique<FMStereoEffectsModulation>(processor),
+                getLocalArea(&matrixButton, matrixButton.getLocalBounds()), this);
+        };
+        addAndMakeVisible(matrixButton);
         static constexpr const char* sliderIds[] = {
             "fxChorusRate", "fxChorusDepth", "fxChorusMix",
             "fxDelayTime", "fxDelayFeedback", "fxDelayMix",
@@ -576,12 +651,13 @@ public:
 
         g.setColour(juce::Colour(0xff8baec5));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawText("Les effets sont désactivés par défaut pour conserver les presets d'origine.",
+        g.drawText("Queues naturelles de delay/réverbération après les notes ; modulation via MATRICE MOD.",
                    25, 547, 950, 18, juce::Justification::centredLeft);
     }
 
     void resized() override
     {
+        matrixButton.setBounds(780, 17, 185, 30);
         switches[0].setBounds(38, 145, 150, 32); // CHORUS
         switches[1].setBounds(38, 302, 150, 32); // DELAY
         switches[2].setBounds(38, 468, 150, 32); // REVERB
@@ -599,6 +675,7 @@ public:
     }
 
 private:
+    juce::TextButton matrixButton { "MATRICE MOD" };
     std::array<juce::Slider, 10> knobs;
     std::array<juce::ComboBox, 6> switches;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;

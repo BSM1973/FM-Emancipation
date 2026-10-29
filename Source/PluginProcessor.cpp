@@ -70,6 +70,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("fxReverbDamping", "Reverb damping", 0.0f, 1.0f, 0.45f);
     f("fxReverbWidth", "Reverb stereo width", 0.0f, 1.0f, 1.0f);
     f("fxReverbMix", "Reverb wet mix", 0.0f, 1.0f, 0.25f);
+    for (const auto* source : { "Lfo1", "Lfo2", "Env1", "Env2" }) {
+        const auto prefix = juce::String("fxMod") + source;
+        f(prefix + "Chorus", prefix + " chorus depth", -1.0f, 1.0f, 0.0f);
+        f(prefix + "Delay", prefix + " delay feedback", -1.0f, 1.0f, 0.0f);
+        f(prefix + "Reverb", prefix + " reverb wet", -1.0f, 1.0f, 0.0f);
+    }
     // The LFO defaults to OFF and does not alter existing sessions.
     f("lfoWave", "LFO waveform", 0.0f, 3.0f, 0.0f);
     f("lfoRate", "LFO free rate (Hz)", 0.05f, 20.0f, 5.0f);
@@ -135,6 +141,35 @@ bool FMEmancipationAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) 
     return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         || l.getMainOutputChannelSet() == juce::AudioChannelSet::mono();
 }
+double FMEmancipationAudioProcessor::getTailLengthSeconds() const
+{
+    // Estimate a -60 dB decay so DAWs keep processing after the last note.
+    const auto read = [this](const char* id) -> double {
+        if (const auto* value = parameters.getRawParameterValue(id))
+            return value->load(std::memory_order_relaxed);
+        return 0.0;
+    };
+    double tail = read("fxChorusEnabled") >= 0.5 ? 0.1 : 0.0;
+    if (read("fxDelayEnabled") >= 0.5 && read("fxDelayMix") > 0.0) {
+        static constexpr double divisions[] { 4.0, 2.0, 1.0, 0.5, 0.75, 1.0 / 3.0 };
+        const int division = juce::jlimit(0, 5, (int)std::lround(read("fxDelayDivision")));
+        const double bpm = juce::jmax(20.0, tailHostBpm.load(std::memory_order_relaxed));
+        const double seconds = read("fxDelaySync") >= 0.5
+            ? divisions[division] * 60.0 / bpm : read("fxDelayTime");
+        const double time = juce::jlimit(0.05, 3.999, seconds);
+        double maxFeedback = read("fxDelayFeedback");
+        for (const auto* src : { "fxModLfo1Delay", "fxModLfo2Delay",
+                                  "fxModEnv1Delay", "fxModEnv2Delay" })
+            maxFeedback += 0.35 * std::abs(read(src));
+        maxFeedback = juce::jlimit(0.0, 0.85, maxFeedback);
+        const double repeats = maxFeedback <= 0.00001 ? 1.0
+            : juce::jmax(1.0, std::ceil(std::log(0.001) / std::log(maxFeedback)));
+        tail += juce::jmin(180.0, time * repeats);
+    }
+    if (read("fxReverbEnabled") >= 0.5 && read("fxReverbMix") > 0.0)
+        tail += 2.0 + 10.0 * read("fxReverbSize");
+    return juce::jlimit(0.0, 192.0, tail);
+}
 void FMEmancipationAudioProcessor::prepareToPlay(double sr, int maximumExpectedSamplesPerBlock)
 {
     rate = sr > 0 ? sr : 44100.0;
@@ -161,6 +196,12 @@ void FMEmancipationAudioProcessor::prepareToPlay(double sr, int maximumExpectedS
     chorusEffect.setFeedback(0.08f);
     reverbEffect.setSampleRate(rate);
     reverbEffect.reset();
+    chorusDepthSmoother.reset(rate, 0.03);
+    reverbWetSmoother.reset(rate, 0.03);
+    chorusDepthSmoother.setCurrentAndTargetValue(
+        parameters.getRawParameterValue("fxChorusDepth")->load());
+    reverbWetSmoother.setCurrentAndTargetValue(
+        parameters.getRawParameterValue("fxReverbMix")->load());
     const int memorySamples = (int)std::ceil(rate * 4.0) + 4;
     for (auto& channel : delayMemory)
         channel.assign((size_t)memorySamples, 0.0f);
@@ -266,6 +307,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     lockToHost(0, lfoSync, lfoDivision);
     lockToHost(1, lfo2Sync, lfo2Division);
 
+    tailHostBpm.store(hostBpm, std::memory_order_relaxed);
     const double lfoHz = lfoSync ? hostBpm / (60.0 * lfoBeatsPerCycle[lfoDivision]) : lfoRate;
     const double lfo2Hz = lfo2Sync ? hostBpm / (60.0 * lfoBeatsPerCycle[lfo2Division]) : lfo2Rate;
     const auto phaseIncrement = [&](double hz, bool synced) {
@@ -561,10 +603,48 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
 
     // Post-synthesis stereo effects: Chorus -> Delay -> Reverb. Each module
     // has an independent bypass and is inaudible for all previous presets.
+    // Four modulation sources share a bipolar three-target effects matrix.
+    // Modulation of global effects is deliberately evaluated once per block,
+    // then smoothed before reaching the DSP; it never allocates on audio thread.
+    double envPeak[2] {};
+    for (const auto& voice : voices)
+        if (voice.note >= 0)
+            for (int i = 0; i < 2; ++i)
+                envPeak[i] = juce::jmax(envPeak[i], voice.modulationEnvelope[(size_t)i]);
+
+    double effectPhase[2] { lfoPhases[0], lfoPhases[1] };
+    for (int i = 0; i < 2; ++i)
+        if (noteRetrigger[(size_t)i])
+            for (const auto& voice : voices)
+                if (voice.note >= 0) {
+                    effectPhase[i] = voice.noteLfoPhases[(size_t)i];
+                    break;
+                }
+    const double modSources[4] {
+        evaluateLfo(effectPhase[0] + lfoStartOffsets[0], lfoWave) * lfoDepth,
+        evaluateLfo(effectPhase[1] + lfoStartOffsets[1], lfo2Wave) * lfo2Depth,
+        envPeak[0], envPeak[1]
+    };
+    static constexpr const char* modPrefixes[] {
+        "fxModLfo1", "fxModLfo2", "fxModEnv1", "fxModEnv2"
+    };
+    double modChorus = 0.0, modDelay = 0.0, modReverb = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        const juce::String prefix(modPrefixes[i]);
+        modChorus += modSources[i] * param(prefix + "Chorus");
+        modDelay += modSources[i] * param(prefix + "Delay");
+        modReverb += modSources[i] * param(prefix + "Reverb");
+    }
+    chorusDepthSmoother.setTargetValue((float)juce::jlimit(0.0, 1.0,
+        (double)param("fxChorusDepth") + 0.5 * modChorus));
+    reverbWetSmoother.setTargetValue((float)juce::jlimit(0.0, 1.0,
+        (double)param("fxReverbMix") + 0.5 * modReverb));
+    const float chorusDepth = chorusDepthSmoother.skip(buffer.getNumSamples());
+    const float reverbWet = reverbWetSmoother.skip(buffer.getNumSamples());
     const bool chorusOn = param("fxChorusEnabled") >= 0.5f;
     if (chorusOn) {
         chorusEffect.setRate(param("fxChorusRate"));
-        chorusEffect.setDepth(param("fxChorusDepth"));
+        chorusEffect.setDepth(chorusDepth);
         chorusEffect.setMix(param("fxChorusMix"));
         juce::dsp::AudioBlock<float> audioBlock(buffer);
         juce::dsp::ProcessContextReplacing<float> context(audioBlock);
@@ -584,7 +664,8 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         const int ringSize = (int)delayMemory[0].size();
         delayTimeSmoother.setTargetValue((float)juce::jlimit(2.0, (double)ringSize - 3.0,
                                                           seconds * rate));
-        delayFeedbackSmoother.setTargetValue(param("fxDelayFeedback"));
+        delayFeedbackSmoother.setTargetValue((float)juce::jlimit(0.0, 0.85,
+            (double)param("fxDelayFeedback") + 0.35 * modDelay));
         delayMixSmoother.setTargetValue(param("fxDelayMix"));
         const int channels = juce::jmin(2, buffer.getNumChannels());
         const bool pingPong = channels == 2 && param("fxDelayPingPong") >= 0.5f;
@@ -627,7 +708,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         settings.roomSize = param("fxReverbSize");
         settings.damping = param("fxReverbDamping");
         settings.width = param("fxReverbWidth");
-        settings.wetLevel = param("fxReverbMix");
+        settings.wetLevel = reverbWet;
         settings.dryLevel = 1.0f - settings.wetLevel;
         settings.freezeMode = 0.0f;
         reverbEffect.setParameters(settings);
@@ -692,6 +773,12 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("fxReverbDamping", 0.45f);
     set("fxReverbWidth", 1.0f);
     set("fxReverbMix", 0.25f);
+    for (const auto* source : { "Lfo1", "Lfo2", "Env1", "Env2" }) {
+        const auto prefix = juce::String("fxMod") + source;
+        set(prefix + "Chorus", 0.0f);
+        set(prefix + "Delay", 0.0f);
+        set(prefix + "Reverb", 0.0f);
+    }
     set("lfoWave", 0.0f);
     set("lfoRate", 5.0f);
     set("lfoSync", 0.0f);
