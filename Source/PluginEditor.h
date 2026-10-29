@@ -13,6 +13,7 @@ private:
     juce::TextButton loadPresetButton { "CHARGER" };
     juce::ComboBox userPresetSelector;
     void refreshUserPresets();
+    juce::Array<juce::File> userPresetFiles;
     std::array<juce::Slider, 6> ratios, levels;
     std::array<juce::Slider, 6> opAttacks, opDecays, opSustains, opReleases;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
