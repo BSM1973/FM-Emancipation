@@ -3,6 +3,15 @@
 #include <cmath>
 namespace {
 constexpr double twoPi = juce::MathConstants<double>::twoPi;
+
+double evaluateLfo(double phase, int shape) noexcept
+{
+    const double fraction = (phase - twoPi * std::floor(phase / twoPi)) / twoPi;
+    if (shape == 1) return 1.0 - 4.0 * std::abs(fraction - 0.5);
+    if (shape == 2) return 2.0 * fraction - 1.0;
+    if (shape == 3) return fraction < 0.5 ? 1.0 : -1.0;
+    return std::sin(phase);
+}
 }
 juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor::makeParameters()
 {
@@ -31,6 +40,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("lfo2Division", "LFO 2 beat division", 0.0f, 6.0f, 2.0f);
     f("lfo2Depth", "LFO 2 modulation amount", 0.0f, 1.0f, 0.0f);
     f("lfo2Target", "LFO 2 destination", 0.0f, 5.0f, 0.0f);
+    f("lfoPhaseOffset", "LFO 1 initial phase", 0.0f, 1.0f, 0.0f);
+    f("lfo2PhaseOffset", "LFO 2 initial phase", 0.0f, 1.0f, 0.0f);
+    f("lfoRetrigger", "LFO 1 note retrigger", 0.0f, 1.0f, 0.0f);
+    f("lfo2Retrigger", "LFO 2 note retrigger", 0.0f, 1.0f, 0.0f);
     for (int i = 0; i < 6; ++i) {
         f("ratio" + juce::String(i), "OP " + juce::String(i + 1) + " ratio", 0.25f, 16, i == 2 ? 3.0f : 1.0f);
         f("level" + juce::String(i), "OP " + juce::String(i + 1) + " level", 0, 1, i < 2 ? 0.8f : 0.5f);
@@ -98,6 +111,12 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const int lfo2Division = juce::jlimit(0, 6, (int)std::round(param("lfo2Division")));
     const double lfo2Depth = param("lfo2Depth");
     const int lfo2Target = juce::jlimit(0, 5, (int)std::round(param("lfo2Target")));
+    const std::array<double, 2> lfoStartOffsets {
+        twoPi * param("lfoPhaseOffset"), twoPi * param("lfo2PhaseOffset")
+    };
+    const std::array<bool, 2> noteRetrigger {
+        param("lfoRetrigger") >= 0.5f, param("lfo2Retrigger") >= 0.5f
+    };
 
     // Quarter-note units per complete cycle: 1 bar, 1/2, 1/4,
     // 1/8, 1/16, dotted 1/8, and triplet 1/8.
@@ -194,37 +213,17 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             hasEvent = iterator.getNextEvent(message, eventSample);
         }
-        const double phaseFraction = lfoPhases[0] / twoPi;
-        double lfoValue = std::sin(lfoPhases[0]);
-        if (lfoWave == 1) lfoValue = 1.0 - 4.0 * std::abs(phaseFraction - 0.5);
-        else if (lfoWave == 2) lfoValue = 2.0 * phaseFraction - 1.0;
-        else if (lfoWave == 3) lfoValue = phaseFraction < 0.5 ? 1.0 : -1.0;
+        // Global LFO phase runs continuously, including while notes overlap.
+        // Per-note mode uses separate phases stored in each Voice instead.
+        const double globalWave1 = evaluateLfo(lfoPhases[0] + lfoStartOffsets[0], lfoWave);
+        const double globalWave2 = evaluateLfo(lfoPhases[1] + lfoStartOffsets[1], lfo2Wave);
         lfoPhases[0] += lfoPhaseStep;
-        if (lfoPhases[0] >= twoPi) lfoPhases[0] -= twoPi * std::floor(lfoPhases[0] / twoPi);
-
-        const double phaseFraction2 = lfoPhases[1] / twoPi;
-        double lfo2Value = std::sin(lfoPhases[1]);
-        if (lfo2Wave == 1) lfo2Value = 1.0 - 4.0 * std::abs(phaseFraction2 - 0.5);
-        else if (lfo2Wave == 2) lfo2Value = 2.0 * phaseFraction2 - 1.0;
-        else if (lfo2Wave == 3) lfo2Value = phaseFraction2 < 0.5 ? 1.0 : -1.0;
         lfoPhases[1] += lfo2PhaseStep;
-        if (lfoPhases[1] >= twoPi) lfoPhases[1] -= twoPi * std::floor(lfoPhases[1] / twoPi);
+        for (auto& phase : lfoPhases)
+            if (phase >= twoPi) phase -= twoPi * std::floor(phase / twoPi);
 
-        const double mod = lfoValue * lfoDepth;
-        const double mod2 = lfo2Value * lfo2Depth;
         const bool matrixEnabled = lfoTarget == 5 && lfoDepth > 0.0;
         const bool matrix2Enabled = lfo2Target == 5 && lfo2Depth > 0.0;
-        const double pitchSemitones = (lfoTarget == 1 ? 2.0 * mod : 0.0)
-                                    + (lfo2Target == 1 ? 2.0 * mod2 : 0.0);
-        const double pitchFactor = pitchSemitones != 0.0 ? std::pow(2.0, pitchSemitones / 12.0) : 1.0;
-        const double tremolo = (lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0)
-                             * (lfo2Target == 2 ? 1.0 - 0.5 * lfo2Depth + 0.5 * mod2 : 1.0);
-        const double modulatedFMDepth = juce::jmax(0.0, depth
-            * (lfoTarget == 3 ? 1.0 + mod : 1.0)
-            * (lfo2Target == 3 ? 1.0 + mod2 : 1.0));
-        const double modulatedAMDepth = juce::jlimit(0.0, 1.0, am
-            + (lfoTarget == 4 ? 0.5 * mod : 0.0)
-            + (lfo2Target == 4 ? 0.5 * mod2 : 0.0));
         double mix = 0.0;
         for (auto& v : voices) {
             if (v.note < 0) continue;
@@ -232,6 +231,38 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             v.envelope = v.releasing ? juce::jmax(0.0, v.envelope - step)
                                      : juce::jmin(1.0, v.envelope + step);
             if (v.releasing && v.envelope <= 0) { v = {}; continue; }
+
+            // Note retrigger starts at the initial phase for every new note.
+            // Voices progress independently, so chords do not reset held notes.
+            const double wave1 = noteRetrigger[0]
+                ? evaluateLfo(v.noteLfoPhases[0] + lfoStartOffsets[0], lfoWave)
+                : globalWave1;
+            const double wave2 = noteRetrigger[1]
+                ? evaluateLfo(v.noteLfoPhases[1] + lfoStartOffsets[1], lfo2Wave)
+                : globalWave2;
+            if (noteRetrigger[0]) {
+                v.noteLfoPhases[0] += lfoPhaseStep;
+                if (v.noteLfoPhases[0] >= twoPi)
+                    v.noteLfoPhases[0] -= twoPi * std::floor(v.noteLfoPhases[0] / twoPi);
+            }
+            if (noteRetrigger[1]) {
+                v.noteLfoPhases[1] += lfo2PhaseStep;
+                if (v.noteLfoPhases[1] >= twoPi)
+                    v.noteLfoPhases[1] -= twoPi * std::floor(v.noteLfoPhases[1] / twoPi);
+            }
+            const double mod = wave1 * lfoDepth;
+            const double mod2 = wave2 * lfo2Depth;
+            const double pitchSemitones = (lfoTarget == 1 ? 2.0 * mod : 0.0)
+                                        + (lfo2Target == 1 ? 2.0 * mod2 : 0.0);
+            const double pitchFactor = pitchSemitones != 0.0 ? std::pow(2.0, pitchSemitones / 12.0) : 1.0;
+            const double tremolo = (lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0)
+                                 * (lfo2Target == 2 ? 1.0 - 0.5 * lfo2Depth + 0.5 * mod2 : 1.0);
+            const double modulatedFMDepth = juce::jmax(0.0, depth
+                * (lfoTarget == 3 ? 1.0 + mod : 1.0)
+                * (lfo2Target == 3 ? 1.0 + mod2 : 1.0));
+            const double modulatedAMDepth = juce::jlimit(0.0, 1.0, am
+                + (lfoTarget == 4 ? 0.5 * mod : 0.0)
+                + (lfo2Target == 4 ? 0.5 * mod2 : 0.0));
             const double bend = pitchBendSemitones[(size_t)(v.midiChannel - 1)];
             const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note) * std::pow(2.0, bend / 12.0) * pitchFactor;
             double op[6] {};
@@ -309,9 +340,22 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         const float sample = (float)(std::tanh(mix * output));
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
     }
-    // A single atomic write per block per LFO keeps UI drawing off the audio thread.
-    for (size_t i = 0; i < lfoPhases.size(); ++i)
-        lfoDisplayPhases[i].store((float)(lfoPhases[i] / twoPi), std::memory_order_relaxed);
+    // Once per block, publish the actual LFO phases for the UI.
+    // In per-note mode preview the oldest active voice's modulation.
+    for (size_t i = 0; i < lfoPhases.size(); ++i) {
+        double previewPhase = lfoPhases[i];
+        if (noteRetrigger[i]) {
+            for (const auto& v : voices) {
+                if (v.note >= 0) {
+                    previewPhase = v.noteLfoPhases[i];
+                    break;
+                }
+            }
+        }
+        const double offsetPhase = previewPhase + lfoStartOffsets[i];
+        const double fraction = (offsetPhase - twoPi * std::floor(offsetPhase / twoPi)) / twoPi;
+        lfoDisplayPhases[i].store((float)fraction, std::memory_order_relaxed);
+    }
 }
 const juce::String FMEmancipationAudioProcessor::getProgramName(int index)
 {
@@ -349,6 +393,10 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("lfo2Division", 2.0f);
     set("lfo2Depth", 0.0f);
     set("lfo2Target", 0.0f);
+    set("lfoPhaseOffset", 0.0f);
+    set("lfo2PhaseOffset", 0.0f);
+    set("lfoRetrigger", 0.0f);
+    set("lfo2Retrigger", 0.0f);
     for (int i = 0; i < 6; ++i) {
         const auto op = juce::String(i);
         set("lfoOpPitch" + op, 0.0f);
