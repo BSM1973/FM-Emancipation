@@ -35,6 +35,10 @@ private:
         double phase[6] {};
         double feedbackSample[6] {};
         std::array<double, 2> noteLfoPhases {}; // independent modulation per MIDI voice
+        // Two independent note-triggered modulation ADSRs (not operator envelopes).
+        std::array<double, 2> modulationEnvelope {};
+        std::array<double, 2> modulationReleaseStart {};
+        std::array<int, 2> modulationStage {}; // 0=A 1=D 2=S 3=R 4=finished
         double operatorEnvelope[6] {};
         int operatorStage[6] {};
         double envelope = 0.0;
