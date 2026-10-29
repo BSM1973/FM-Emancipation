@@ -93,15 +93,21 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     userPresetSelector.onChange = [this] {
         const auto id = userPresetSelector.getSelectedId();
         if (id <= 0) return;
-        if (id > userPresetFiles.size()) return;
+        if (id > filteredPresetFiles.size()) return;
         juce::MemoryBlock data;
-        if (userPresetFiles[id - 1].loadFileAsData(data) && !data.isEmpty()) {
+        if (filteredPresetFiles[id - 1].loadFileAsData(data) && !data.isEmpty()) {
             processor.setStateInformation(data.getData(), (int)data.getSize());
             presetSelector.setSelectedId(processor.getCurrentProgram() + 1, juce::dontSendNotification);
             repaint();
         }
     };
     addAndMakeVisible(userPresetSelector);
+    presetSearch.setTextToShowWhenEmpty("RECHERCHER UN PRESET...", juce::Colours::lightgrey);
+    presetSearch.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xff1b2a38));
+    presetSearch.setColour(juce::TextEditor::textColourId, juce::Colour(0xffc4e5ff));
+    presetSearch.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xff77bfe6));
+    presetSearch.onTextChange = [this] { refreshUserPresets(); };
+    addAndMakeVisible(presetSearch);
     refreshUserPresets();
     setSize(1496, 990);
     setResizable(true, true);
@@ -201,7 +207,8 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(presetSelector, 54, 163, 270, 39);
     fit(savePresetButton, 332, 163, 130, 39);
     fit(loadPresetButton, 470, 163, 120, 39);
-    fit(userPresetSelector, 54, 210, 536, 32);
+    fit(userPresetSelector, 54, 210, 270, 32);
+    fit(presetSearch, 332, 210, 258, 32);
     fit(algorithm, 795, 151, 94, 79);
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
@@ -225,10 +232,15 @@ void FMEmancipationAudioProcessorEditor::refreshUserPresets()
         return a.getFullPathName().compareIgnoreCase(b.getFullPathName()) < 0;
     });
     userPresetSelector.clear(juce::dontSendNotification);
+    filteredPresetFiles.clear();
+    const auto query = presetSearch.getText().trim();
     for (int i = 0; i < userPresetFiles.size(); ++i) {
         auto category = userPresetFiles[i].getParentDirectory().getRelativePathFrom(folder);
         if (category == "." || category.isEmpty()) category = "Sans categorie";
-        userPresetSelector.addItem(category + " / " + userPresetFiles[i].getFileNameWithoutExtension(), i + 1);
+        const auto label = category + " / " + userPresetFiles[i].getFileNameWithoutExtension();
+        if (query.isNotEmpty() && !label.containsIgnoreCase(query)) continue;
+        filteredPresetFiles.add(userPresetFiles[i]);
+        userPresetSelector.addItem(label, filteredPresetFiles.size());
     }
-    userPresetSelector.setTextWhenNothingSelected("MES PRESETS (" + juce::String(userPresetFiles.size()) + ")");
+    userPresetSelector.setTextWhenNothingSelected("MES PRESETS (" + juce::String(filteredPresetFiles.size()) + ")");
 }
