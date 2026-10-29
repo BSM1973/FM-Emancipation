@@ -286,10 +286,10 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         g.setFont(juce::FontOptions(13.0f));
         g.drawText(i < 2 ? "CARRIER" : "FM MOD", x + 150, 358, 80, 23, juce::Justification::centred);
         g.drawText("Frequency ratio", x + 18, 395, 195, 20, juce::Justification::left);
-        g.drawText("Output level", x + 18, 530, 195, 20, juce::Justification::left);
+        g.drawText("Output level", x + 18, 507, 195, 20, juce::Justification::left);
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-        g.drawText("FB", x + 4, 551, 58, 18, juce::Justification::centred);
-        g.drawText("VEL", x + 154, 551, 80, 18, juce::Justification::centred);
+        g.drawText("FB", x + 4, 527, 58, 17, juce::Justification::centred);
+        g.drawText("VEL", x + 154, 527, 80, 17, juce::Justification::centred);
         g.setFont(juce::FontOptions(13.0f));
         // Live ADSR preview, using the same parameter values as the knobs.
         const auto envValue = [&](const juce::String& key) {
@@ -300,8 +300,8 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         const float sustain = envValue("opSustain");
         const float release = envValue("opRelease");
         const float total = attack + decay + 0.35f + release;
-        const float x0 = (float)x + 20.0f, y0 = 665.0f;
-        const float width = 198.0f, height = 53.0f;
+        const float x0 = (float)x + 20.0f, y0 = 691.0f;
+        const float width = 198.0f, height = 29.0f;
         const float xa = x0 + width * attack / total;
         const float xd = xa + width * decay / total;
         const float xs = xd + width * 0.35f / total;
@@ -319,7 +319,7 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         const char* adsrLabels[] = { "A", "D", "S", "R" };
         for (int k = 0; k < 4; ++k)
-            g.drawText(adsrLabels[k], x + 18 + 54*k, 672, 48, 16, juce::Justification::centred);
+            g.drawText(adsrLabels[k], x + 18 + 54*k, 693, 48, 13, juce::Justification::centred);
     }
     g.setColour(juce::Colour(0xff29323b)); g.fillRoundedRectangle(30, 772, 1432, 149, 4);
     g.setColour(line); g.drawRoundedRectangle(30, 772, 1432, 149, 4, 1);
@@ -366,14 +366,14 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(lfoMatrixButton, 1076, 846, 100, 31);
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
-        fit(levels[i], 85 + 238*i, 548, 66, 112);
-        fit(feedbackControls[i], 36 + 238*i, 573, 44, 65);
-        fit(velocityControls[i], 184 + 238*i, 573, 44, 65);
-        fit(waveformControls[i], 46 + 238*i, 660, 206, 26);
-        fit(opAttacks[i], 34 + 238*i, 689, 52, 62);
-        fit(opDecays[i], 88 + 238*i, 689, 52, 62);
-        fit(opSustains[i], 142 + 238*i, 689, 52, 62);
-        fit(opReleases[i], 196 + 238*i, 689, 52, 62);
+        fit(levels[i], 103 + 238*i, 543, 60, 81);
+        fit(feedbackControls[i], 36 + 238*i, 545, 58, 79);
+        fit(velocityControls[i], 172 + 238*i, 545, 58, 79);
+        fit(waveformControls[i], 46 + 238*i, 629, 206, 26);
+        fit(opAttacks[i], 34 + 238*i, 707, 52, 47);
+        fit(opDecays[i], 88 + 238*i, 707, 52, 47);
+        fit(opSustains[i], 142 + 238*i, 707, 52, 47);
+        fit(opReleases[i], 196 + 238*i, 707, 52, 47);
     }
 }
 
