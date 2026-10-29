@@ -36,6 +36,7 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             repaint();
         }
     };
+    presetSelector.setTooltip("100 presets d\u0027usine - 10 familles de sons");
     presetSelector.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff1b2a38));
     presetSelector.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
     presetSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
