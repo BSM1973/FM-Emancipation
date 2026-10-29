@@ -8,9 +8,12 @@ public:
 private:
     FMEmancipationAudioProcessor& processor;
     juce::Slider algorithm, fmDepth, amDepth, output;
-    juce::Slider lfoRate, lfoDepth;
+    juce::Slider lfoRate, lfoDepth, lfo2Rate, lfo2Depth;
+    juce::ComboBox lfoSourceSelector;
+    void updateLfoSourceVisibility();
     juce::TextButton lfoMatrixButton { "MATRICE" };
     juce::ComboBox lfoWaveform, lfoSync, lfoDivision, lfoDestination;
+    juce::ComboBox lfo2Waveform, lfo2Sync, lfo2Division, lfo2Destination;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lfoComboAttachments;
     juce::ComboBox presetSelector;
     juce::TextButton savePresetButton { "ENREGISTRER" };
