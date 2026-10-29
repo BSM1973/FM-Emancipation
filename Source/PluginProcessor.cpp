@@ -180,14 +180,18 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
 void FMEmancipationAudioProcessor::getStateInformation(juce::MemoryBlock& data)
 {
     auto state = parameters.copyState();
+    state.setProperty("selectedFactoryProgram", currentProgram, nullptr);
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, data);
 }
 void FMEmancipationAudioProcessor::setStateInformation(const void* data, int size)
 {
     std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, size));
-    if (xml && xml->hasTagName(parameters.state.getType()))
-        parameters.replaceState(juce::ValueTree::fromXml(*xml));
+    if (xml && xml->hasTagName(parameters.state.getType())) {
+        auto restored = juce::ValueTree::fromXml(*xml);
+        currentProgram = juce::jlimit(0, 99, (int)restored.getProperty("selectedFactoryProgram", 0));
+        parameters.replaceState(restored);
+    }
 }
 juce::AudioProcessorEditor* FMEmancipationAudioProcessor::createEditor()
 {
