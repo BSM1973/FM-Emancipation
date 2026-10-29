@@ -20,6 +20,22 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
         add(levels[i], "level" + juce::String(i), true);
+        add(feedbackControls[i], "feedback" + juce::String(i), false);
+        add(velocityControls[i], "velocity" + juce::String(i), false);
+        feedbackControls[i].setTooltip("Feedback de l'operateur");
+        velocityControls[i].setTooltip("Sensibilite a la velocite MIDI");
+        auto& wave = waveformControls[i];
+        wave.addItem("Sinus", 1);
+        wave.addItem("Triangle", 2);
+        wave.addItem("Dent de scie", 3);
+        wave.addItem("Carree", 4);
+        wave.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+        wave.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+        wave.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+        wave.setTooltip("Forme d'onde de l'operateur");
+        addAndMakeVisible(wave);
+        waveformAttachments.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+            processor.parameters, "wave" + juce::String(i), wave));
         add(opAttacks[i], "opAttack" + juce::String(i), false);
         add(opDecays[i], "opDecay" + juce::String(i), false);
         add(opSustains[i], "opSustain" + juce::String(i), false);
@@ -165,6 +181,10 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText(i < 2 ? "CARRIER" : "FM MOD", x + 150, 358, 80, 23, juce::Justification::centred);
         g.drawText("Frequency ratio", x + 18, 395, 195, 20, juce::Justification::left);
         g.drawText("Output level", x + 18, 530, 195, 20, juce::Justification::left);
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.drawText("FB", x + 10, 551, 62, 18, juce::Justification::centred);
+        g.drawText("VEL", x + 162, 551, 70, 18, juce::Justification::centred);
+        g.setFont(juce::FontOptions(13.0f));
         // Live ADSR preview, using the same parameter values as the knobs.
         const auto envValue = [&](const juce::String& key) {
             return processor.parameters.getRawParameterValue(key + juce::String(i))->load();
@@ -222,6 +242,9 @@ void FMEmancipationAudioProcessorEditor::resized()
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
         fit(levels[i], 85 + 238*i, 548, 66, 112);
+        fit(feedbackControls[i], 38 + 238*i, 573, 58, 65);
+        fit(velocityControls[i], 172 + 238*i, 573, 58, 65);
+        fit(waveformControls[i], 46 + 238*i, 660, 206, 26);
         fit(opAttacks[i], 34 + 238*i, 689, 52, 62);
         fit(opDecays[i], 88 + 238*i, 689, 52, 62);
         fit(opSustains[i], 142 + 238*i, 689, 52, 62);
