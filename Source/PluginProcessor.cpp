@@ -67,7 +67,14 @@ bool FMEmancipationAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) 
     return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         || l.getMainOutputChannelSet() == juce::AudioChannelSet::mono();
 }
-void FMEmancipationAudioProcessor::prepareToPlay(double sr, int) { rate = sr > 0 ? sr : 44100.0; voices = {}; pitchBendSemitones.fill(0.0); lfoPhases.fill(0.0); }
+void FMEmancipationAudioProcessor::prepareToPlay(double sr, int)
+{
+    rate = sr > 0 ? sr : 44100.0;
+    voices = {};
+    pitchBendSemitones.fill(0.0);
+    lfoPhases.fill(0.0);
+    for (auto& phase : lfoDisplayPhases) phase.store(0.0f, std::memory_order_relaxed);
+}
 void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -302,6 +309,9 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         const float sample = (float)(std::tanh(mix * output));
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
     }
+    // A single atomic write per block per LFO keeps UI drawing off the audio thread.
+    for (size_t i = 0; i < lfoPhases.size(); ++i)
+        lfoDisplayPhases[i].store((float)(lfoPhases[i] / twoPi), std::memory_order_relaxed);
 }
 const juce::String FMEmancipationAudioProcessor::getProgramName(int index)
 {
