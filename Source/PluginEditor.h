@@ -1,11 +1,12 @@
 #pragma once
 #include "PluginProcessor.h"
-class FMEmancipationAudioProcessorEditor final : public juce::AudioProcessorEditor {
+class FMEmancipationAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
     explicit FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor&);
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
+    void timerCallback() override;
     FMEmancipationAudioProcessor& processor;
     juce::Slider algorithm, fmDepth, amDepth, output;
     juce::Slider lfoRate, lfoDepth, lfo2Rate, lfo2Depth;
