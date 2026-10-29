@@ -1005,6 +1005,52 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     presetCategory.onChange = [this] { refreshUserPresets(); };
     addAndMakeVisible(presetCategory);
     refreshUserPresets();
+
+    // Turn the five graphical mock-up tabs into real interactive controls.
+    static constexpr const char* tabNames[] {
+        "01   OPERATORS", "02   ALGORITHM", "03   ENVELOPES",
+        "04   EFFECTS", "05   PRESETS"
+    };
+    for (int i = 0; i < 5; ++i) {
+        auto& tab = navigationTabs[(size_t)i];
+        tab.setButtonText(tabNames[i]);
+        tab.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff303b47));
+        tab.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4d4e3));
+        tab.onClick = [this, i] { selectTab(i); };
+        addAndMakeVisible(tab);
+    }
+    const auto setupSubTab = [this](juce::TextButton& tab, const juce::String& title,
+                                    int section, int index) {
+        tab.setButtonText(title);
+        tab.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff303b47));
+        tab.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+        tab.onClick = [this, section, index] {
+            if (section == 1) currentAlgorithmPage = index;
+            else if (section == 2) currentEnvelopePage = index;
+            else currentEffectPage = index;
+            updateTabVisibility();
+            repaint();
+        };
+        addAndMakeVisible(tab);
+    };
+    setupSubTab(algorithmTabs[0], "ALGORITHMES FM / AM", 1, 0);
+    setupSubTab(algorithmTabs[1], "ARPÉGIATEUR MIDI", 1, 1);
+    setupSubTab(envelopeTabs[0], "ADSR DES OPÉRATEURS", 2, 0);
+    setupSubTab(envelopeTabs[1], "ENV 1 / ENV 2 + LFO", 2, 1);
+    setupSubTab(effectTabs[0], "CHORUS / DELAY / RÉVERB", 3, 0);
+    setupSubTab(effectTabs[1], "FILTRE MULTIMODE", 3, 1);
+
+    // Keep all old JUCE parameter attachments; move the actual effects,
+    // filter, modulation ADSRs and arpeggiator into the relevant real page.
+    studioEffectsPage = std::make_unique<FMStereoEffectsPanel>(processor);
+    multimodeFilterPage = std::make_unique<FMMultimodeFilterPanel>(processor);
+    modulationEnvelopePage = std::make_unique<FMDualModulationEnvelopePanel>(processor);
+    arpeggiatorPage = std::make_unique<FMArpeggiatorPanel>(processor);
+    addChildComponent(*studioEffectsPage);
+    addChildComponent(*multimodeFilterPage);
+    addChildComponent(*modulationEnvelopePage);
+    addChildComponent(*arpeggiatorPage);
+    selectTab(0);
     setSize(1496, 990);
     setResizable(true, true);
     setResizeLimits(900, 650, 2200, 1500);
@@ -1012,231 +1058,475 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
 }
 void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    const auto area = getLocalBounds().toFloat();
-    const float scaleX = area.getWidth() / 1496.0f;
-    const float scaleY = area.getHeight() / 990.0f;
-    g.addTransform(juce::AffineTransform::scale(scaleX, scaleY));
-    const auto bg = juce::Colour(0xff20262c);
-    const auto blue = juce::Colour(0xff174568);
-    const auto line = juce::Colour(0xff465869);
-    g.fillAll(bg);
-    g.setColour(juce::Colours::whitesmoke);
-    g.setFont(juce::FontOptions(38.0f, juce::Font::bold));
-    g.drawText("FM", 29, 20, 69, 50, juce::Justification::centredLeft);
-    g.setColour(juce::Colour(0xff78c9fa));
-    g.drawText("Emancipation", 92, 20, 360, 50, juce::Justification::centredLeft);
-    g.setColour(juce::Colour(0xff9bafc0));
-    g.setFont(juce::FontOptions(14.0f));
-    g.drawText("S I X   O P E R A T O R S  ·  I N F I N I T E   E X P R E S S I O N", 30, 78, 560, 24, juce::Justification::left);
-    g.setColour(blue); g.fillRoundedRectangle(30, 108, 1432, 143, 4);
-    g.setColour(juce::Colour(0xff77bfe6)); g.drawRoundedRectangle(30, 108, 1432, 143, 4, 1);
-    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText("P R O G R A M   M E M O R Y", 54, 127, 400, 25, juce::Justification::left);
-    g.setFont(juce::FontOptions(29.0f, juce::Font::bold));
-    g.setColour(juce::Colour(0xffc4e5ff));
-    g.drawText("Custom Sound", 54, 158, 530, 45, juce::Justification::left);
-    g.setFont(juce::FontOptions(13.0f));
-    g.drawText("ALGORITHM", 641, 130, 180, 25, juce::Justification::left);
-    g.drawText("OPERATOR OUTPUT LEVELS", 1010, 126, 410, 25, juce::Justification::left);
-    for (int i = 0; i < 5; ++i) {
-        const int x = 30 + i * 192;
-        g.setColour(juce::Colour(0xff303b47));
-        g.fillRect(x, 270, 182, 44);
-        g.setColour(juce::Colour(0xffb5c6d6));
-        g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-        const char* tabs[] = { "01   OPERATORS", "02   ALGORITHM", "03   ENVELOPES", "04   EFFECTS", "05   PRESETS" };
-        g.drawText(tabs[i], x + 16, 279, 162, 25, juce::Justification::centred);
-    }
-    for (int i = 0; i < 6; ++i) {
-        const int x = 30 + i * 238;
-        g.setColour(juce::Colour(0xff29323b)); g.fillRoundedRectangle((float)x, 331, 238, 425, 3);
-        g.setColour(line); g.drawRoundedRectangle((float)x, 331, 238, 425, 3, 1);
-        g.setColour(juce::Colour(0xffcee5f7));
-        g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
-        g.drawText("OP " + juce::String(i + 1), x + 18, 352, 120, 30, juce::Justification::left);
-        g.setFont(juce::FontOptions(13.0f));
-        g.drawText(i < 2 ? "CARRIER" : "FM MOD", x + 150, 358, 80, 23, juce::Justification::centred);
-        g.drawText("Frequency ratio", x + 18, 395, 195, 20, juce::Justification::left);
-        g.drawText("Output level", x + 18, 507, 195, 20, juce::Justification::left);
-        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-        g.drawText("FB", x + 4, 527, 58, 17, juce::Justification::centred);
-        g.drawText("VEL", x + 154, 527, 80, 17, juce::Justification::centred);
-        g.setFont(juce::FontOptions(13.0f));
-        // Live ADSR preview, using the same parameter values as the knobs.
-        const auto envValue = [&](const juce::String& key) {
-            return processor.parameters.getRawParameterValue(key + juce::String(i))->load();
-        };
-        const float attack = envValue("opAttack");
-        const float decay = envValue("opDecay");
-        const float sustain = envValue("opSustain");
-        const float release = envValue("opRelease");
-        const float total = attack + decay + 0.35f + release;
-        const float x0 = (float)x + 20.0f, y0 = 691.0f;
-        const float width = 198.0f, height = 29.0f;
-        const float xa = x0 + width * attack / total;
-        const float xd = xa + width * decay / total;
-        const float xs = xd + width * 0.35f / total;
-        const float top = y0 - height, sustainY = y0 - height * sustain;
-        juce::Path envelopePath;
-        envelopePath.startNewSubPath(x0, y0);
-        envelopePath.lineTo(xa, top);
-        envelopePath.lineTo(xd, sustainY);
-        envelopePath.lineTo(xs, sustainY);
-        envelopePath.lineTo(x0 + width, y0);
-        g.setColour(juce::Colour(0xff213b4b));
-        g.fillRoundedRectangle(x0 - 3, top - 4, width + 6, height + 9, 4.0f);
-        g.setColour(juce::Colour(0xff70d6f5));
-        g.strokePath(envelopePath, juce::PathStrokeType(2.0f));
-        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-        const char* adsrLabels[] = { "A", "D", "S", "R" };
-        for (int k = 0; k < 4; ++k)
-            g.drawText(adsrLabels[k], x + 18 + 54*k, 693, 48, 13, juce::Justification::centred);
-    }
-    g.setColour(juce::Colour(0xff29323b)); g.fillRoundedRectangle(30, 772, 1432, 149, 4);
-    g.setColour(line); g.drawRoundedRectangle(30, 772, 1432, 149, 4, 1);
-    g.setColour(juce::Colour(0xff8ba6bc)); g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText("MODULATION ENGINE", 48, 785, 225, 20, juce::Justification::left);
-    g.setColour(juce::Colour(0xff78c9fa));
-    g.drawText("LFO / MODULATION", 305, 785, 205, 20, juce::Justification::left);
-    g.setColour(juce::Colour(0xffb5c6d6));
-    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    g.drawText("ONDE", 311, 812, 116, 17, juce::Justification::centred);
-    g.drawText("VITESSE", 447, 812, 105, 17, juce::Justification::centred);
-    g.drawText("SYNC", 563, 812, 99, 17, juce::Justification::centred);
-    g.drawText("DIVISION", 675, 812, 106, 17, juce::Justification::centred);
-    g.drawText("INTENSITE", 795, 812, 99, 17, juce::Justification::centred);
-    g.drawText("DESTINATION", 914, 812, 151, 17, juce::Justification::centred);
-    g.setColour(juce::Colour(0xff8ba6bc));
-    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    // Live LFO 1 + LFO 2 preview. The shape and amplitude are read directly
-    // from APVTS parameters and the phase cursor from lock-free DSP snapshots.
-    const auto drawLfoPreview = [&](int index) {
-        const bool second = index == 1;
-        const juce::String prefix = second ? "lfo2" : "lfo";
-        const auto getParam = [&](const juce::String& key) {
-            return processor.parameters.getRawParameterValue(key)->load();
-        };
-        const int shape = juce::jlimit(0, 3, (int)std::lround(getParam(prefix + "Wave")));
-        const float depth = juce::jlimit(0.0f, 1.0f, getParam(prefix + "Depth"));
-        const float phase = juce::jlimit(0.0f, 1.0f, processor.getLfoPhaseForDisplay(index));
-        const float y = second ? 865.0f : 808.0f;
-        const juce::Colour accent = second ? juce::Colour(0xff9cb3ff) : juce::Colour(0xff70d6f5);
-        g.setColour(juce::Colour(0xff172b3a));
-        g.fillRoundedRectangle(1305.0f, y, 150.0f, 51.0f, 4.0f);
-        g.setColour(juce::Colour(0xff405b70));
-        g.drawRoundedRectangle(1305.0f, y, 150.0f, 51.0f, 4.0f, 1.0f);
-        g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-        g.setColour(accent);
-        g.drawText(second ? "LFO 2" : "LFO 1", 1313, (int)y + 3, 70, 15, juce::Justification::left);
-        g.setColour(juce::Colour(0xffc4e5ff));
-        g.drawText(juce::String(juce::roundToInt(depth * 100.0f)) + " %",
-                   1390, (int)y + 3, 57, 15, juce::Justification::right);
+    const float sx = (float)getWidth() / 1496.0f;
+    const float sy = (float)getHeight() / 990.0f;
+    g.addTransform(juce::AffineTransform::scale(sx, sy));
+    const auto background = juce::Colour(0xff20262c);
+    const auto panel = juce::Colour(0xff29323b);
+    const auto border = juce::Colour(0xff465869);
+    const auto accent = juce::Colour(0xff78c9fa);
+    const auto light = juce::Colour(0xffc4e5ff);
+    g.fillAll(background);
 
-        const float left = 1315.0f, width = 130.0f;
-        const float midline = y + 35.0f;
-        const float amplitude = 12.0f * depth;
-        g.setColour(juce::Colour(0xff37576b));
-        g.drawLine(left, midline, left + width, midline, 1.0f);
-        juce::Path curve;
-        for (int point = 0; point <= 96; ++point) {
-            const double cycle = (double)point / 96.0;
-            double value = std::sin(juce::MathConstants<double>::twoPi * cycle);
-            if (shape == 1) value = 1.0 - 4.0 * std::abs(cycle - 0.5);
-            else if (shape == 2) value = 2.0 * cycle - 1.0;
-            else if (shape == 3) value = cycle < 0.5 ? 1.0 : -1.0;
-            const float x = left + width * (float)cycle;
-            const float waveY = midline - amplitude * (float)value;
-            if (point == 0) curve.startNewSubPath(x, waveY);
-            else curve.lineTo(x, waveY);
-        }
-        g.setColour(accent);
-        g.strokePath(curve, juce::PathStrokeType(1.6f));
-        const float cursorX = left + width * phase;
-        g.setColour(juce::Colour(0xffe3f6ff).withAlpha(0.8f));
-        g.drawLine(cursorX, y + 20.0f, cursorX, y + 48.0f, 1.0f);
+    // The navigation controls are real JUCE buttons placed on top of this
+    // background; the five header labels are no longer static paint.
+    g.setColour(juce::Colours::whitesmoke);
+    g.setFont(juce::FontOptions(36.0f, juce::Font::bold));
+    g.drawText("FM", 36, 78, 62, 49, juce::Justification::centredLeft);
+    g.setColour(accent);
+    g.drawText("Emancipation", 100, 78, 350, 49, juce::Justification::centredLeft);
+    g.setColour(juce::Colour(0xff93b2c9));
+    g.setFont(juce::FontOptions(13.0f));
+    g.drawText("SIX OPERATOR FM / AM SYNTHESIZER", 39, 129, 557, 22,
+               juce::Justification::left);
+    g.setColour(juce::Colour(0xff233542));
+    g.fillRoundedRectangle(1266.0f, 90.0f, 193.0f, 104.0f, 5.0f);
+    g.setColour(border);
+    g.drawRoundedRectangle(1266.0f, 90.0f, 193.0f, 104.0f, 5.0f, 1.0f);
+    g.setColour(light);
+    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    g.drawText("MASTER OUTPUT", 1283, 98, 157, 18, juce::Justification::centred);
+    g.setColour(juce::Colour(0xff344451));
+    g.drawHorizontalLine(174, 34.0f, 1248.0f);
+
+    static constexpr const char* pageTitles[] {
+        "SIX OPÉRATEURS", "ARCHITECTURE FM / AM", "ENVELOPPES ET MODULATION",
+        "EFFETS ET FILTRAGE", "BIBLIOTHÈQUE DE PRESETS"
     };
-    drawLfoPreview(0);
-    drawLfoPreview(1);
-    g.setColour(juce::Colour(0xff8ba6bc));
-    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText("MASTER OUTPUT", 1315, 785, 146, 20, juce::Justification::left);
-    g.drawText("FM EMANCIPATION  /  SIX-OPERATOR FM-AM SYNTHESIZER", 30, 934, 800, 20, juce::Justification::left);
+    static constexpr const char* pageDescriptions[] {
+        "Fréquence, forme d'onde, niveau, feedback et vélocité de chaque opérateur.",
+        "Vingt algorithmes de synthèse, profondeur FM, AM et arpégiateur musical.",
+        "Six enveloppes ADSR, deux enveloppes de modulation et deux LFO.",
+        "Chorus, delay stéréo, réverbération et filtre multimode.",
+        "Cent presets d'usine et bibliothèque de sons utilisateur."
+    };
+    g.setColour(accent);
+    g.setFont(juce::FontOptions(23.0f, juce::Font::bold));
+    g.drawText(pageTitles[currentTab], 38, 191, 1100, 32, juce::Justification::left);
+    g.setColour(juce::Colour(0xffa8bfd1));
+    g.setFont(juce::FontOptions(13.0f));
+    g.drawText(pageDescriptions[currentTab], 39, 224, 1150, 21, juce::Justification::left);
+
+    if (currentTab == 0) {
+        // All synthesis operator controls live exclusively on OPERATORS.
+        for (int i = 0; i < 6; ++i) {
+            const int x = 30 + i * 238;
+            g.setColour(panel);
+            g.fillRoundedRectangle((float)x, 278.0f, 238.0f, 603.0f, 5.0f);
+            g.setColour(border);
+            g.drawRoundedRectangle((float)x, 278.0f, 238.0f, 603.0f, 5.0f, 1.0f);
+            g.setColour(light);
+            g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
+            g.drawText("OP " + juce::String(i + 1), x + 20, 294, 128, 34, juce::Justification::left);
+            g.setColour(juce::Colour(0xff78c9fa));
+            g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+            g.drawText(i < 2 ? "CARRIER" : "FM MOD", x + 147, 302, 80, 20,
+                       juce::Justification::centred);
+            g.setColour(light);
+            g.setFont(juce::FontOptions(13.0f));
+            g.drawText("FREQUENCY RATIO", x + 19, 356, 200, 21, juce::Justification::centred);
+            g.drawText("OUTPUT LEVEL", x + 19, 515, 200, 22, juce::Justification::centred);
+            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            g.drawText("FEEDBACK", x + 10, 554, 80, 18, juce::Justification::centred);
+            g.drawText("LEVEL", x + 84, 554, 73, 18, juce::Justification::centred);
+            g.drawText("VELOCITY", x + 160, 554, 71, 18, juce::Justification::centred);
+            g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+            g.drawText("WAVEFORM", x + 24, 694, 190, 20, juce::Justification::centred);
+            g.setColour(juce::Colour(0xff385366));
+            g.drawHorizontalLine(770, (float)x + 15.0f, (float)x + 224.0f);
+            g.setColour(juce::Colour(0xff8cb5ce));
+            g.setFont(juce::FontOptions(12.0f));
+            g.drawText("OSCILLATOR " + juce::String(i + 1), x + 18, 787, 200, 24,
+                       juce::Justification::centred);
+        }
+    }
+    else if (currentTab == 1 && currentAlgorithmPage == 0) {
+        // A live routing diagram shows the actual six-operator carrier path.
+        g.setColour(panel);
+        g.fillRoundedRectangle(34.0f, 296.0f, 1428.0f, 605.0f, 7.0f);
+        g.setColour(border);
+        g.drawRoundedRectangle(34.0f, 296.0f, 1428.0f, 605.0f, 7.0f, 1.0f);
+        g.setColour(light);
+        g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+        g.drawText("ALGORITHME", 82, 322, 220, 21, juce::Justification::left);
+        g.drawText("FM DEPTH", 297, 322, 190, 21, juce::Justification::centred);
+        g.drawText("AM DEPTH", 522, 322, 190, 21, juce::Justification::centred);
+        g.setColour(accent);
+        g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+        g.drawText("SCHÉMA DE CONNEXION DES SIX OPÉRATEURS", 78, 457, 1240, 33,
+                   juce::Justification::left);
+
+        static constexpr int routes[20][6] {
+            {-1,0,1,2,3,4}, {-1,0,0,2,2,4},
+            {-1,0,1,-1,3,4}, {-1,0,-1,2,3,4},
+            {-1,0,0,0,3,4}, {-1,0,1,1,1,4},
+            {-1,0,-1,2,-1,4}, {-1,0,1,-1,3,-1},
+            {-1,0,-1,2,2,-1}, {-1,0,0,-1,3,-1},
+            {-1,-1,1,2,3,4}, {-1,-1,1,-1,3,4},
+            {-1,-1,1,1,-1,4}, {-1,-1,1,-1,3,-1},
+            {-1,-1,-1,2,3,4}, {-1,-1,-1,2,-1,4},
+            {-1,-1,-1,2,2,-1}, {-1,-1,-1,-1,3,4},
+            {-1,-1,-1,-1,3,-1}, {-1,-1,-1,-1,-1,-1}
+        };
+        const int algorithmIndex = juce::jlimit(0, 19, (int)std::lround(
+            processor.parameters.getRawParameterValue("algorithm")->load()) - 1);
+        constexpr float cardX[6] { 235.0f, 655.0f, 1075.0f, 235.0f, 655.0f, 1075.0f };
+        constexpr float cardY[6] { 527.0f, 527.0f, 527.0f, 732.0f, 732.0f, 732.0f };
+        for (int op = 0; op < 6; ++op) {
+            const int destination = routes[algorithmIndex][op];
+            if (destination < 0) continue;
+            juce::Path wire;
+            const float sx0 = cardX[op] + 78.0f, sy0 = cardY[op] + 30.0f;
+            const float dx0 = cardX[destination] + 78.0f, dy0 = cardY[destination] + 30.0f;
+            wire.startNewSubPath(sx0, sy0);
+            wire.quadraticTo((sx0 + dx0) * 0.5f, (sy0 + dy0) * 0.5f - 54.0f, dx0, dy0);
+            g.setColour(juce::Colour(0xff557fa0));
+            g.strokePath(wire, juce::PathStrokeType(2.5f));
+        }
+        for (int op = 0; op < 6; ++op) {
+            const bool carrier = routes[algorithmIndex][op] < 0;
+            g.setColour(carrier ? juce::Colour(0xff1b5672) : juce::Colour(0xff30475b));
+            g.fillRoundedRectangle(cardX[op], cardY[op], 156.0f, 62.0f, 7.0f);
+            g.setColour(carrier ? accent : border);
+            g.drawRoundedRectangle(cardX[op], cardY[op], 156.0f, 62.0f, 7.0f, 1.0f);
+            g.setColour(light);
+            g.setFont(juce::FontOptions(19.0f, juce::Font::bold));
+            g.drawText("OP " + juce::String(op + 1), (int)cardX[op] + 15,
+                       (int)cardY[op] + 6, 125, 29, juce::Justification::centred);
+            g.setFont(juce::FontOptions(11.0f));
+            g.drawText(carrier ? "CARRIER" : "MODULATEUR",
+                       (int)cardX[op] + 9, (int)cardY[op] + 36, 138, 18,
+                       juce::Justification::centred);
+        }
+        g.setColour(juce::Colour(0xff94bad4));
+        g.setFont(juce::FontOptions(12.0f));
+        g.drawText("Les connexions suivent l'algorithme sélectionné. Les blocs CARRIER produisent le son.",
+                   72, 863, 1250, 23, juce::Justification::centred);
+    }
+    else if (currentTab == 1) {
+        g.setColour(panel);
+        g.fillRoundedRectangle(34.0f, 295.0f, 1428.0f, 599.0f, 7.0f);
+        g.setColour(border);
+        g.drawRoundedRectangle(34.0f, 295.0f, 1428.0f, 599.0f, 7.0f, 1.0f);
+    }
+    else if (currentTab == 2 && currentEnvelopePage == 0) {
+        // The six original ADSR knobs remain attached to their true OP params.
+        for (int i = 0; i < 6; ++i) {
+            const int x = 30 + 238 * i;
+            g.setColour(panel);
+            g.fillRoundedRectangle((float)x, 290.0f, 238.0f, 595.0f, 5.0f);
+            g.setColour(border);
+            g.drawRoundedRectangle((float)x, 290.0f, 238.0f, 595.0f, 5.0f, 1.0f);
+            g.setColour(light);
+            g.setFont(juce::FontOptions(20.0f, juce::Font::bold));
+            g.drawText("OP " + juce::String(i + 1), x + 20, 315, 190, 34, juce::Justification::left);
+            g.setColour(accent);
+            g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+            g.drawText("ADSR / ENVELOPPE D'AMPLITUDE", x + 12, 365, 213, 24,
+                       juce::Justification::centred);
+            const auto value = [&](const juce::String& name) {
+                return processor.parameters.getRawParameterValue(name + juce::String(i))->load();
+            };
+            const float a = value("opAttack"), d = value("opDecay");
+            const float s = value("opSustain"), r = value("opRelease");
+            const float span = a + d + 0.5f + r;
+            const float left = (float)x + 22.0f, baseline = 527.0f, width = 194.0f, height = 104.0f;
+            const float attackX = left + width * a / span;
+            const float decayX = attackX + width * d / span;
+            const float sustainX = decayX + width * 0.5f / span;
+            juce::Path curve;
+            curve.startNewSubPath(left, baseline);
+            curve.lineTo(attackX, baseline - height);
+            curve.lineTo(decayX, baseline - height * s);
+            curve.lineTo(sustainX, baseline - height * s);
+            curve.lineTo(left + width, baseline);
+            g.setColour(juce::Colour(0xff1b3446));
+            g.fillRoundedRectangle(left - 5.0f, baseline - height - 9.0f,
+                                   width + 10.0f, height + 20.0f, 5.0f);
+            g.setColour(accent);
+            g.strokePath(curve, juce::PathStrokeType(2.5f));
+            static constexpr const char* labels[] { "A", "D", "S", "R" };
+            g.setColour(light);
+            g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+            for (int j = 0; j < 4; ++j)
+                g.drawText(labels[j], x + 10 + j * 56, 555, 52, 22, juce::Justification::centred);
+            g.setColour(juce::Colour(0xff8ba6bc));
+            g.drawText("COURBE LIVE", x + 22, 754, 196, 22, juce::Justification::centred);
+        }
+    }
+    else if (currentTab == 2) {
+        g.setColour(panel);
+        g.fillRoundedRectangle(30.0f, 735.0f, 1432.0f, 186.0f, 5.0f);
+        g.setColour(border);
+        g.drawRoundedRectangle(30.0f, 735.0f, 1432.0f, 186.0f, 5.0f, 1.0f);
+        g.setColour(accent);
+        g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
+        g.drawText("LFO / MODULATION", 47, 745, 336, 25, juce::Justification::left);
+        g.setColour(light);
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        static constexpr const char* labels[] {
+            "ONDE", "VITESSE", "SYNC", "DIVISION", "INTENSITÉ", "DESTINATION"
+        };
+        constexpr int x[] { 311, 447, 563, 675, 795, 914 };
+        constexpr int w[] { 116, 105, 99, 106, 99, 151 };
+        for (int i = 0; i < 6; ++i)
+            g.drawText(labels[i], x[i], 802, w[i], 19, juce::Justification::centred);
+        for (int index = 0; index < 2; ++index) {
+            const bool second = index != 0;
+            const juce::String prefix = second ? "lfo2" : "lfo";
+            const auto param = [&](const juce::String& suffix) {
+                return processor.parameters.getRawParameterValue(prefix + suffix)->load();
+            };
+            const int shape = juce::jlimit(0, 3, (int)std::lround(param("Wave")));
+            const float depth = juce::jlimit(0.0f, 1.0f, param("Depth"));
+            const float phase = juce::jlimit(0.0f, 1.0f,
+                                            processor.getLfoPhaseForDisplay(index));
+            const float y = second ? 851.0f : 790.0f, left = 1317.0f, width = 125.0f;
+            const auto color = second ? juce::Colour(0xff9cb3ff) : accent;
+            g.setColour(juce::Colour(0xff172b3a));
+            g.fillRoundedRectangle(left - 10.0f, y, 145.0f, 54.0f, 4.0f);
+            g.setColour(color);
+            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+            g.drawText(second ? "LFO 2" : "LFO 1", (int)left, (int)y, 124, 17,
+                       juce::Justification::left);
+            juce::Path waveform;
+            for (int i = 0; i <= 80; ++i) {
+                const double cycle = (double)i / 80.0;
+                double v = std::sin(juce::MathConstants<double>::twoPi * cycle);
+                if (shape == 1) v = 1.0 - 4.0 * std::abs(cycle - 0.5);
+                else if (shape == 2) v = 2.0 * cycle - 1.0;
+                else if (shape == 3) v = cycle < 0.5 ? 1.0 : -1.0;
+                const float px = left + width * (float)cycle;
+                const float py = y + 35.0f - 11.0f * depth * (float)v;
+                if (i == 0) waveform.startNewSubPath(px, py);
+                else waveform.lineTo(px, py);
+            }
+            g.strokePath(waveform, juce::PathStrokeType(1.4f));
+            const float cursor = left + width * phase;
+            g.setColour(juce::Colour(0xffe4f7ff));
+            g.drawLine(cursor, y + 19.0f, cursor, y + 49.0f, 1.0f);
+        }
+    }
+    else if (currentTab == 3) {
+        g.setColour(panel);
+        g.fillRoundedRectangle(34.0f, 294.0f, 1428.0f, 620.0f, 6.0f);
+        g.setColour(border);
+        g.drawRoundedRectangle(34.0f, 294.0f, 1428.0f, 620.0f, 6.0f, 1.0f);
+    }
+    else if (currentTab == 4) {
+        g.setColour(panel);
+        g.fillRoundedRectangle(43.0f, 281.0f, 672.0f, 594.0f, 7.0f);
+        g.fillRoundedRectangle(750.0f, 281.0f, 703.0f, 594.0f, 7.0f);
+        g.setColour(border);
+        g.drawRoundedRectangle(43.0f, 281.0f, 672.0f, 594.0f, 7.0f, 1.0f);
+        g.drawRoundedRectangle(750.0f, 281.0f, 703.0f, 594.0f, 7.0f, 1.0f);
+        g.setColour(accent);
+        g.setFont(juce::FontOptions(21.0f, juce::Font::bold));
+        g.drawText("FACTORY PRESETS", 74, 312, 562, 34, juce::Justification::left);
+        g.drawText("USER PRESETS", 779, 312, 572, 34, juce::Justification::left);
+        g.setColour(juce::Colour(0xffa2bdd1));
+        g.setFont(juce::FontOptions(13.0f));
+        g.drawText("100 programmes organisés en dix familles.", 74, 349, 560, 24,
+                   juce::Justification::left);
+        g.drawText("Rechercher, filtrer, charger et sauvegarder vos sons.", 779, 349, 620, 24,
+                   juce::Justification::left);
+        g.setColour(border);
+        g.drawHorizontalLine(510, 78.0f, 676.0f);
+        g.drawHorizontalLine(555, 779.0f, 1420.0f);
+        g.setColour(light);
+        g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+        g.drawText("PROGRAMME ACTUEL", 80, 530, 570, 25, juce::Justification::left);
+        g.setColour(accent);
+        g.setFont(juce::FontOptions(25.0f, juce::Font::bold));
+        g.drawText(processor.getProgramName(processor.getCurrentProgram()),
+                   80, 565, 579, 46, juce::Justification::left);
+        g.setColour(juce::Colour(0xff91b1c5));
+        g.setFont(juce::FontOptions(13.0f));
+        g.drawText("Les presets utilisateur utilisent le format .fme.", 780, 586, 624, 22,
+                   juce::Justification::left);
+        g.drawText("Les paramètres MIDI, les effets et les modulations sont sauvegardés.",
+                   780, 612, 633, 42, juce::Justification::left);
+    }
+    g.setColour(juce::Colour(0xff8ca7bb));
+    g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+    g.drawText("FM EMANCIPATION  •  BSM / LIBERTY  •  VST3",
+               38, 939, 1000, 24, juce::Justification::left);
 }
 void FMEmancipationAudioProcessorEditor::timerCallback()
 {
-    // The waveform previews live at the right of the modulation section.
-    const auto scaled = juce::Rectangle<float>(1304.0f, 806.0f, 154.0f, 112.0f)
-        .transformedBy(juce::AffineTransform::scale(getWidth() / 1496.0f,
-                                                    getHeight() / 990.0f))
+    // Repaint only the two oscilloscopes while the modulation page is open.
+    if (currentTab != 2 || currentEnvelopePage != 1) return;
+    const auto area = juce::Rectangle<float>(1300.0f, 786.0f, 165.0f, 124.0f)
+        .transformedBy(juce::AffineTransform::scale((float)getWidth()/1496.0f,
+                                                   (float)getHeight()/990.0f))
         .getSmallestIntegerContainer();
-    repaint(scaled);
+    repaint(area);
 }
 
 void FMEmancipationAudioProcessorEditor::resized()
 {
-    auto fit = [&](juce::Component& s, int x, int y, int w, int h) {
-        s.setBounds(juce::Rectangle<int>(x, y, w, h)
-            .toFloat().transformedBy(juce::AffineTransform::scale(getWidth()/1496.0f, getHeight()/990.0f)).getSmallestIntegerContainer());
+    const float sx = (float)getWidth() / 1496.0f;
+    const float sy = (float)getHeight() / 990.0f;
+    auto fit = [&](juce::Component& component, int x, int y, int w, int height) {
+        component.setBounds(juce::Rectangle<int>(x, y, w, height)
+            .toFloat().transformedBy(juce::AffineTransform::scale(sx, sy))
+            .getSmallestIntegerContainer());
     };
-    fit(presetSelector, 54, 163, 270, 39);
-    fit(savePresetButton, 332, 163, 130, 39);
-    fit(loadPresetButton, 470, 163, 120, 39);
-    fit(userPresetSelector, 54, 210, 270, 32);
-    fit(presetSearch, 332, 210, 170, 32);
-    fit(clearPresetSearch, 510, 210, 80, 32);
-    fit(presetCategory, 602, 209, 180, 30);
-    fit(algorithm, 795, 151, 94, 79);
-    fit(fmDepth, 60, 819, 80, 100);
-    fit(amDepth, 164, 819, 80, 100);
-    fit(output, 1190, 819, 100, 100);
-    fit(lfoWaveform, 311, 846, 116, 31);
-    fit(lfoRate, 447, 832, 105, 80);
-    fit(lfoSync, 563, 846, 99, 31);
-    fit(lfoDivision, 675, 846, 106, 31);
-    fit(lfoDepth, 795, 832, 99, 80);
-    fit(lfoDestination, 914, 846, 151, 31);
-    fit(lfoSourceSelector, 526, 780, 112, 28);
-    fit(lfoPhaseModeButton, 662, 780, 146, 28);
-    fit(modulationEnvelopesButton, 826, 780, 150, 28);
-    fit(filterButton, 992, 780, 102, 28);
-    fit(effectsButton, 1102, 780, 83, 28);
-    fit(arpeggiatorButton, 1194, 780, 105, 28);
-    fit(lfo2Waveform, 311, 846, 116, 31);
-    fit(lfo2Rate, 447, 832, 105, 80);
-    fit(lfo2Sync, 563, 846, 99, 31);
-    fit(lfo2Division, 675, 846, 106, 31);
-    fit(lfo2Depth, 795, 832, 99, 80);
-    fit(lfo2Destination, 914, 846, 151, 31);
-    fit(lfoMatrixButton, 1076, 846, 100, 31);
-    for (int i = 0; i < 6; ++i) {
-        fit(ratios[i], 43 + 238*i, 420, 209, 88);
-        fit(levels[i], 103 + 238*i, 543, 60, 81);
-        fit(feedbackControls[i], 36 + 238*i, 545, 58, 79);
-        fit(velocityControls[i], 172 + 238*i, 545, 58, 79);
-        fit(waveformControls[i], 46 + 238*i, 629, 206, 26);
-        fit(opAttacks[i], 34 + 238*i, 707, 52, 47);
-        fit(opDecays[i], 88 + 238*i, 707, 52, 47);
-        fit(opSustains[i], 142 + 238*i, 707, 52, 47);
-        fit(opReleases[i], 196 + 238*i, 707, 52, 47);
+    auto embed = [&](juce::Component& component, int x, int y, int w, int height) {
+        // Preserve each existing component's working native layout and mouse
+        // hit-testing while scaling it into the five-page workspace.
+        component.setTransform(juce::AffineTransform());
+        component.setBounds(0, 0, w, height);
+        component.setTransform(juce::AffineTransform::scale(sx, sy)
+                                   .translated(x * sx, y * sy));
+    };
+    for (int i = 0; i < 5; ++i)
+        fit(navigationTabs[(size_t)i], 34 + i * 264, 10, 250, 48);
+    for (int i = 0; i < 2; ++i) {
+        fit(algorithmTabs[(size_t)i], 50 + i * 297, 251, 283, 36);
+        fit(envelopeTabs[(size_t)i], 50 + i * 297, 251, 283, 36);
+        fit(effectTabs[(size_t)i], 50 + i * 297, 251, 283, 36);
     }
+    fit(output, 1311, 119, 108, 77);
+    fit(algorithm, 86, 355, 200, 90);
+    fit(fmDepth, 305, 355, 194, 90);
+    fit(amDepth, 527, 355, 194, 90);
+
+    // Factory and user presets have their own page, not the header.
+    fit(presetSelector, 80, 397, 590, 46);
+    fit(savePresetButton, 80, 448, 192, 44);
+    fit(loadPresetButton, 286, 448, 192, 44);
+    fit(userPresetSelector, 781, 395, 631, 43);
+    fit(presetSearch, 781, 453, 390, 38);
+    fit(clearPresetSearch, 1182, 453, 104, 38);
+    fit(presetCategory, 781, 504, 505, 37);
+
+    // Direct oscillator controls on OPERATORS.
+    for (int i = 0; i < 6; ++i) {
+        const int x = 30 + 238 * i;
+        fit(ratios[(size_t)i], x + 26, 386, 186, 97);
+        fit(feedbackControls[(size_t)i], x + 18, 577, 62, 92);
+        fit(levels[(size_t)i], x + 88, 577, 62, 92);
+        fit(velocityControls[(size_t)i], x + 158, 577, 62, 92);
+        fit(waveformControls[(size_t)i], x + 24, 725, 190, 35);
+        fit(opAttacks[(size_t)i], x + 9, 583, 52, 91);
+        fit(opDecays[(size_t)i], x + 65, 583, 52, 91);
+        fit(opSustains[(size_t)i], x + 121, 583, 52, 91);
+        fit(opReleases[(size_t)i], x + 177, 583, 52, 91);
+    }
+    // The envelope modulation subpage retains both LFOs and their matrices.
+    fit(lfoSourceSelector, 515, 746, 116, 28);
+    fit(lfoPhaseModeButton, 647, 746, 145, 28);
+    fit(lfoMatrixButton, 1091, 837, 109, 31);
+    fit(lfoWaveform, 311, 836, 116, 32);
+    fit(lfoRate, 446, 822, 106, 90);
+    fit(lfoSync, 562, 836, 99, 32);
+    fit(lfoDivision, 675, 836, 106, 32);
+    fit(lfoDepth, 793, 822, 99, 90);
+    fit(lfoDestination, 913, 836, 152, 32);
+    fit(lfo2Waveform, 311, 836, 116, 32);
+    fit(lfo2Rate, 446, 822, 106, 90);
+    fit(lfo2Sync, 562, 836, 99, 32);
+    fit(lfo2Division, 675, 836, 106, 32);
+    fit(lfo2Depth, 793, 822, 99, 90);
+    fit(lfo2Destination, 913, 836, 152, 32);
+
+    // Old popup launcher buttons are intentionally hidden; their existing
+    // editors are now installed as the relevant in-page modules instead.
+    embed(*studioEffectsPage, 239, 321, 1000, 570);
+    embed(*multimodeFilterPage, 282, 305, 926, 615);
+    embed(*modulationEnvelopePage, 236, 294, 1004, 428);
+    embed(*arpeggiatorPage, 357, 347, 780, 372);
+}
+
+void FMEmancipationAudioProcessorEditor::selectTab(int index)
+{
+    currentTab = juce::jlimit(0, 4, index);
+    updateTabVisibility();
+    repaint();
+}
+
+void FMEmancipationAudioProcessorEditor::updateTabVisibility()
+{
+    // Selected state and actual component visibility always remain in sync.
+    const auto updateButton = [](juce::TextButton& button, bool active) {
+        button.setColour(juce::TextButton::buttonColourId,
+                         active ? juce::Colour(0xff174568) : juce::Colour(0xff303b47));
+        button.setColour(juce::TextButton::textColourOffId,
+                         active ? juce::Colour(0xffe1f4ff) : juce::Colour(0xffbdcedb));
+        button.repaint();
+    };
+    for (int i = 0; i < 5; ++i)
+        updateButton(navigationTabs[(size_t)i], currentTab == i);
+    for (int i = 0; i < 2; ++i) {
+        algorithmTabs[(size_t)i].setVisible(currentTab == 1);
+        envelopeTabs[(size_t)i].setVisible(currentTab == 2);
+        effectTabs[(size_t)i].setVisible(currentTab == 3);
+        updateButton(algorithmTabs[(size_t)i], currentAlgorithmPage == i);
+        updateButton(envelopeTabs[(size_t)i], currentEnvelopePage == i);
+        updateButton(effectTabs[(size_t)i], currentEffectPage == i);
+    }
+    const bool operators = currentTab == 0;
+    const bool algorithms = currentTab == 1 && currentAlgorithmPage == 0;
+    const bool operatorEnvelopes = currentTab == 2 && currentEnvelopePage == 0;
+    const bool modulation = currentTab == 2 && currentEnvelopePage == 1;
+    const bool presets = currentTab == 4;
+    algorithm.setVisible(algorithms);
+    fmDepth.setVisible(algorithms);
+    amDepth.setVisible(algorithms);
+    output.setVisible(true);
+    for (int i = 0; i < 6; ++i) {
+        ratios[(size_t)i].setVisible(operators);
+        levels[(size_t)i].setVisible(operators);
+        feedbackControls[(size_t)i].setVisible(operators);
+        velocityControls[(size_t)i].setVisible(operators);
+        waveformControls[(size_t)i].setVisible(operators);
+        opAttacks[(size_t)i].setVisible(operatorEnvelopes);
+        opDecays[(size_t)i].setVisible(operatorEnvelopes);
+        opSustains[(size_t)i].setVisible(operatorEnvelopes);
+        opReleases[(size_t)i].setVisible(operatorEnvelopes);
+    }
+    const bool lfo2 = lfoSourceSelector.getSelectedId() == 2;
+    lfoSourceSelector.setVisible(modulation);
+    lfoWaveform.setVisible(modulation && !lfo2);
+    lfoRate.setVisible(modulation && !lfo2);
+    lfoSync.setVisible(modulation && !lfo2);
+    lfoDivision.setVisible(modulation && !lfo2);
+    lfoDepth.setVisible(modulation && !lfo2);
+    lfoDestination.setVisible(modulation && !lfo2);
+    lfo2Waveform.setVisible(modulation && lfo2);
+    lfo2Rate.setVisible(modulation && lfo2);
+    lfo2Sync.setVisible(modulation && lfo2);
+    lfo2Division.setVisible(modulation && lfo2);
+    lfo2Depth.setVisible(modulation && lfo2);
+    lfo2Destination.setVisible(modulation && lfo2);
+    lfoMatrixButton.setVisible(modulation);
+    lfoPhaseModeButton.setVisible(modulation);
+    lfoMatrixButton.setButtonText(lfo2 ? "MATRICE 2" : "MATRICE 1");
+
+    studioEffectsPage->setVisible(currentTab == 3 && currentEffectPage == 0);
+    multimodeFilterPage->setVisible(currentTab == 3 && currentEffectPage == 1);
+    modulationEnvelopePage->setVisible(modulation);
+    arpeggiatorPage->setVisible(currentTab == 1 && currentAlgorithmPage == 1);
+
+    // Legacy launchers are superseded by embedded pages, never duplicated.
+    filterButton.setVisible(false);
+    effectsButton.setVisible(false);
+    modulationEnvelopesButton.setVisible(false);
+    arpeggiatorButton.setVisible(false);
+
+    presetSelector.setVisible(presets);
+    savePresetButton.setVisible(presets);
+    loadPresetButton.setVisible(presets);
+    userPresetSelector.setVisible(presets);
+    presetSearch.setVisible(presets);
+    clearPresetSearch.setVisible(presets);
+    presetCategory.setVisible(presets);
 }
 
 void FMEmancipationAudioProcessorEditor::updateLfoSourceVisibility()
 {
-    const bool second = lfoSourceSelector.getSelectedId() == 2;
-    lfoRate.setVisible(!second);
-    lfoDepth.setVisible(!second);
-    lfoWaveform.setVisible(!second);
-    lfoSync.setVisible(!second);
-    lfoDivision.setVisible(!second);
-    lfoDestination.setVisible(!second);
-    lfo2Rate.setVisible(second);
-    lfo2Depth.setVisible(second);
-    lfo2Waveform.setVisible(second);
-    lfo2Sync.setVisible(second);
-    lfo2Division.setVisible(second);
-    lfo2Destination.setVisible(second);
-    lfoMatrixButton.setButtonText(second ? "MATRICE 2" : "MATRICE 1");
+    updateTabVisibility();
 }
 
 void FMEmancipationAudioProcessorEditor::refreshUserPresets()

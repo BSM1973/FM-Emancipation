@@ -7,6 +7,18 @@ public:
     void resized() override;
 private:
     void timerCallback() override;
+    // Five real pages, plus contextual sub-navigation within complex modules.
+    void selectTab(int index);
+    void updateTabVisibility();
+    int currentTab = 0;
+    int currentEnvelopePage = 0;
+    int currentEffectPage = 0;
+    int currentAlgorithmPage = 0;
+    std::array<juce::TextButton, 5> navigationTabs;
+    std::array<juce::TextButton, 2> envelopeTabs, effectTabs, algorithmTabs;
+    // Existing attached JUCE module editors become embedded page components.
+    std::unique_ptr<juce::Component> studioEffectsPage, multimodeFilterPage;
+    std::unique_ptr<juce::Component> modulationEnvelopePage, arpeggiatorPage;
     FMEmancipationAudioProcessor& processor;
     juce::Slider algorithm, fmDepth, amDepth, output;
     juce::Slider lfoRate, lfoDepth, lfo2Rate, lfo2Depth;
