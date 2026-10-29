@@ -15,3 +15,12 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build --config Release --target FMEmancipation_VST3 --parallel 2
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FM-Emancipation-VST3-${{ runner.os }}
+          path: |
+            build/FMEmancipation_artefacts/Release/VST3/**/*.vst3
+            build/FMEmancipation_artefacts/VST3/**/*.vst3
+          if-no-files-found: error
+          retention-days: 30
