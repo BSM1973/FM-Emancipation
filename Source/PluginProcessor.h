@@ -26,6 +26,7 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeParameters();
     struct Voice {
         int note = -1;
+        int midiChannel = 1;
         double phase[6] {};
         double operatorEnvelope[6] {};
         int operatorStage[6] {};
@@ -35,6 +36,7 @@ private:
     };
     std::array<Voice, 16> voices {};
     double rate = 44100.0;
+    std::array<double, 16> pitchBendSemitones {};
     int currentProgram = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FMEmancipationAudioProcessor)
 };
