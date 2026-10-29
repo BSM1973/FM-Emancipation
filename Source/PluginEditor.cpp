@@ -23,6 +23,8 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
         add(opDecays[i], "opDecay" + juce::String(i), false);
         add(opSustains[i], "opSustain" + juce::String(i), false);
         add(opReleases[i], "opRelease" + juce::String(i), false);
+        for (auto* slider : { &opAttacks[i], &opDecays[i], &opSustains[i], &opReleases[i] })
+            slider->onValueChange = [this] { repaint(); };
     }
     setSize(1496, 990);
     setResizable(true, true);
