@@ -35,7 +35,7 @@ bool FMEmancipationAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) 
     return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         || l.getMainOutputChannelSet() == juce::AudioChannelSet::mono();
 }
-void FMEmancipationAudioProcessor::prepareToPlay(double sr, int) { rate = sr > 0 ? sr : 44100.0; voices = {}; }
+void FMEmancipationAudioProcessor::prepareToPlay(double sr, int) { rate = sr > 0 ? sr : 44100.0; voices = {}; pitchBendSemitones.fill(0.0); }
 void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -68,10 +68,14 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 if (!slot) slot = &voices[0];
                 *slot = {};
                 slot->note = message.getNoteNumber();
+                slot->midiChannel = message.getChannel();
                 slot->velocity = message.getFloatVelocity();
             } else if (message.isNoteOff()) {
                 for (auto& v : voices)
-                    if (v.note == message.getNoteNumber()) v.releasing = true;
+                    if (v.note == message.getNoteNumber() && v.midiChannel == message.getChannel()) v.releasing = true;
+            } else if (message.isPitchWheel()) {
+                const int channel = juce::jlimit(1, 16, message.getChannel()) - 1;
+                pitchBendSemitones[(size_t)channel] = (message.getPitchWheelValue() - 8192) * (2.0 / 8192.0);
             } else if (message.isAllNotesOff() || message.isAllSoundOff()) {
                 for (auto& v : voices) v = {};
             }
@@ -84,7 +88,8 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             v.envelope = v.releasing ? juce::jmax(0.0, v.envelope - step)
                                      : juce::jmin(1.0, v.envelope + step);
             if (v.releasing && v.envelope <= 0) { v = {}; continue; }
-            const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note);
+            const double bend = pitchBendSemitones[(size_t)(v.midiChannel - 1)];
+            const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note) * std::pow(2.0, bend / 12.0);
             double op[6] {};
             // Twenty explicit six-operator routings. Each row lists the
             // destination operator for OP1..OP6 (-1 means a carrier).
