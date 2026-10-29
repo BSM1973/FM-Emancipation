@@ -10,7 +10,6 @@ juce_add_plugin(FMEmancipation
  BUNDLE_ID "com.bsm.fmemancipation"
  PLUGIN_MANUFACTURER_CODE BSM1
  PLUGIN_CODE FME1
- VST3_CAN_REPLACE_VST2 FALSE
  FORMATS VST3
  PRODUCT_NAME "FM Emancipation"
  IS_SYNTH TRUE
@@ -20,6 +19,6 @@ juce_add_plugin(FMEmancipation
  EDITOR_WANTS_KEYBOARD_FOCUS FALSE
  COPY_PLUGIN_AFTER_BUILD FALSE)
 target_sources(FMEmancipation PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp)
-target_compile_definitions(FMEmancipation PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_compile_definitions(FMEmancipation PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(FMEmancipation PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 juce_generate_juce_header(FMEmancipation)
