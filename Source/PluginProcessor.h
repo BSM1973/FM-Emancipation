@@ -28,6 +28,7 @@ private:
         int note = -1;
         int midiChannel = 1;
         double phase[6] {};
+        double feedbackSample[6] {};
         double operatorEnvelope[6] {};
         int operatorStage[6] {};
         double envelope = 0.0;
