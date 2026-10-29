@@ -80,6 +80,83 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
 };
 
+
+class FMLfoPhaseModePanel final : public juce::Component
+{
+public:
+    explicit FMLfoPhaseModePanel(FMEmancipationAudioProcessor& processor)
+    {
+        setSize(615, 275);
+        for (int i = 0; i < 2; ++i) {
+            const auto prefix = i == 0 ? juce::String("lfo") : juce::String("lfo2");
+            auto& phase = phaseKnobs[(size_t)i];
+            phase.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            phase.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 20);
+            phase.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff70d6f5));
+            phase.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff37576b));
+            phase.setColour(juce::Slider::thumbColourId, juce::Colour(0xffe3f6ff));
+            phase.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffe3f6ff));
+            phase.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1b2a38));
+            phase.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff465869));
+            phase.setTooltip("Position initiale : 0 = 0 degre ; 0.25 = 90 degres ; 1 = 360 degres");
+            addAndMakeVisible(phase);
+            phaseAttachments.push_back(
+                std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+                    processor.parameters, prefix + "PhaseOffset", phase));
+
+            auto& trigger = triggerSelectors[(size_t)i];
+            trigger.addItem("Continu / global", 1);
+            trigger.addItem("A chaque note", 2);
+            trigger.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+            trigger.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
+            trigger.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
+            trigger.setTooltip("Chaque voix MIDI redemarre son LFO sans modifier les autres notes tenues");
+            addAndMakeVisible(trigger);
+            triggerAttachments.push_back(
+                std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+                    processor.parameters, prefix + "Retrigger", trigger));
+        }
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(0xff192b3a));
+        g.setColour(juce::Colour(0xff78c9fa));
+        g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
+        g.drawText("PHASE ET DECLENCHEMENT DES LFO", 22, 14, 555, 34, juce::Justification::left);
+        g.setColour(juce::Colour(0xffb5c6d6));
+        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+        g.drawText("PHASE INITIALE", 222, 53, 136, 20, juce::Justification::centred);
+        g.drawText("DECLENCHEMENT", 394, 53, 190, 20, juce::Justification::centred);
+        for (int i = 0; i < 2; ++i) {
+            const int y = 78 + i * 82;
+            g.setColour(juce::Colour(i == 0 ? 0xff233c4e : 0xff203448));
+            g.fillRoundedRectangle(16.0f, (float)y, 582.0f, 78.0f, 5.0f);
+            g.setColour(i == 0 ? juce::Colour(0xff70d6f5) : juce::Colour(0xff9cb3ff));
+            g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+            g.drawText("LFO " + juce::String(i + 1), 35, y + 24, 126, 26, juce::Justification::centredLeft);
+        }
+        g.setColour(juce::Colour(0xffb5c6d6));
+        g.setFont(juce::FontOptions(12.0f));
+        g.drawText("Mode libre : choisir SYNC > Libre dans la section de modulation.",
+                   22, 247, 568, 19, juce::Justification::centredLeft);
+    }
+
+    void resized() override
+    {
+        for (int i = 0; i < 2; ++i) {
+            phaseKnobs[(size_t)i].setBounds(233, 80 + i * 82, 108, 74);
+            triggerSelectors[(size_t)i].setBounds(402, 103 + i * 82, 176, 30);
+        }
+    }
+
+private:
+    std::array<juce::Slider, 2> phaseKnobs;
+    std::array<juce::ComboBox, 2> triggerSelectors;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> phaseAttachments;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> triggerAttachments;
+};
+
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processor(p)
 {
@@ -151,6 +228,15 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             getLocalArea(&lfoMatrixButton, lfoMatrixButton.getLocalBounds()), this);
     };
     addAndMakeVisible(lfoMatrixButton);
+    lfoPhaseModeButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
+    lfoPhaseModeButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
+    lfoPhaseModeButton.setTooltip("Phase initiale et declenchement par note pour les deux LFO");
+    lfoPhaseModeButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<FMLfoPhaseModePanel>(processor),
+            getLocalArea(&lfoPhaseModeButton, lfoPhaseModeButton.getLocalBounds()), this);
+    };
+    addAndMakeVisible(lfoPhaseModeButton);
     updateLfoSourceVisibility();
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
@@ -457,6 +543,7 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(lfoDepth, 795, 832, 99, 80);
     fit(lfoDestination, 914, 846, 151, 31);
     fit(lfoSourceSelector, 526, 780, 112, 28);
+    fit(lfoPhaseModeButton, 662, 780, 146, 28);
     fit(lfo2Waveform, 311, 846, 116, 31);
     fit(lfo2Rate, 447, 832, 105, 80);
     fit(lfo2Sync, 563, 846, 99, 31);
