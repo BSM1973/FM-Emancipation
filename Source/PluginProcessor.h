@@ -34,6 +34,7 @@ private:
         int midiChannel = 1;
         double phase[6] {};
         double feedbackSample[6] {};
+        std::array<double, 2> noteLfoPhases {}; // independent modulation per MIDI voice
         double operatorEnvelope[6] {};
         int operatorStage[6] {};
         double envelope = 0.0;
