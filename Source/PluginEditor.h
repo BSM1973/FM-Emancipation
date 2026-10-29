@@ -11,6 +11,8 @@ private:
     juce::ComboBox presetSelector;
     juce::TextButton savePresetButton { "ENREGISTRER" };
     juce::TextButton loadPresetButton { "CHARGER" };
+    juce::ComboBox userPresetSelector;
+    void refreshUserPresets();
     std::array<juce::Slider, 6> ratios, levels;
     std::array<juce::Slider, 6> opAttacks, opDecays, opSustains, opReleases;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
