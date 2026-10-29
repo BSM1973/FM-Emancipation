@@ -44,6 +44,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("lfo2PhaseOffset", "LFO 2 initial phase", 0.0f, 1.0f, 0.0f);
     f("lfoRetrigger", "LFO 1 note retrigger", 0.0f, 1.0f, 0.0f);
     f("lfo2Retrigger", "LFO 2 note retrigger", 0.0f, 1.0f, 0.0f);
+    // Two additional ADSRs are strictly modulation sources, independent of
+    // the six oscillator envelopes. Depth zero and target OFF preserve all presets.
+    for (int i = 0; i < 2; ++i) {
+        const auto base = "modEnv" + juce::String(i + 1);
+        f(base + "Attack", "ENV " + juce::String(i + 1) + " attack", 0.001f, 8.0f, 0.01f);
+        f(base + "Decay", "ENV " + juce::String(i + 1) + " decay", 0.001f, 8.0f, 0.35f);
+        f(base + "Sustain", "ENV " + juce::String(i + 1) + " sustain", 0.0f, 1.0f, 0.7f);
+        f(base + "Release", "ENV " + juce::String(i + 1) + " release", 0.005f, 12.0f, 0.4f);
+        f(base + "Amount", "ENV " + juce::String(i + 1) + " modulation amount", -1.0f, 1.0f, 0.0f);
+        f(base + "Target", "ENV " + juce::String(i + 1) + " modulation destination", 0.0f, 5.0f, 0.0f);
+    }
     for (int i = 0; i < 6; ++i) {
         f("ratio" + juce::String(i), "OP " + juce::String(i + 1) + " ratio", 0.25f, 16, i == 2 ? 3.0f : 1.0f);
         f("level" + juce::String(i), "OP " + juce::String(i + 1) + " level", 0, 1, i < 2 ? 0.8f : 0.5f);
@@ -117,6 +128,19 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const std::array<bool, 2> noteRetrigger {
         param("lfoRetrigger") >= 0.5f, param("lfo2Retrigger") >= 0.5f
     };
+    // Snapshot automation once per block; no string lookups or allocation
+    // in the polyphonic per-sample processing loop.
+    double envAttack[2], envDecay[2], envSustain[2], envRelease[2], envAmount[2];
+    int envTarget[2];
+    for (int i = 0; i < 2; ++i) {
+        const auto base = "modEnv" + juce::String(i + 1);
+        envAttack[i] = param(base + "Attack");
+        envDecay[i] = param(base + "Decay");
+        envSustain[i] = param(base + "Sustain");
+        envRelease[i] = param(base + "Release");
+        envAmount[i] = param(base + "Amount");
+        envTarget[i] = juce::jlimit(0, 5, (int)std::lround(param(base + "Target")));
+    }
 
     // Quarter-note units per complete cycle: 1 bar, 1/2, 1/4,
     // 1/8, 1/16, dotted 1/8, and triplet 1/8.
@@ -232,6 +256,48 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                                      : juce::jmin(1.0, v.envelope + step);
             if (v.releasing && v.envelope <= 0) { v = {}; continue; }
 
+            // Each modulation envelope belongs to this voice: triggering
+            // another note cannot restart a held note's envelope.
+            double envelopePitchSemitones = 0.0;
+            double envelopeFM = 1.0;
+            double envelopeAM = 0.0;
+            double envelopeLevel = 1.0;
+            double envelopeFeedback = 0.0;
+            for (int e = 0; e < 2; ++e) {
+                auto& value = v.modulationEnvelope[(size_t)e];
+                auto& stage = v.modulationStage[(size_t)e];
+                if (v.releasing && stage < 3) {
+                    v.modulationReleaseStart[(size_t)e] = value;
+                    stage = 3;
+                }
+                if (stage == 0) {
+                    value = juce::jmin(1.0, value + 1.0 / (rate * envAttack[e]));
+                    if (value >= 1.0) stage = 1;
+                } else if (stage == 1) {
+                    const double floor = envSustain[e];
+                    value = juce::jmax(floor, value - (1.0 - floor) / (rate * envDecay[e]));
+                    if (value <= floor) stage = 2;
+                } else if (stage == 2) {
+                    value = envSustain[e];
+                } else if (stage == 3) {
+                    value = juce::jmax(0.0, value
+                        - v.modulationReleaseStart[(size_t)e] / (rate * envRelease[e]));
+                    if (value <= 0.0) stage = 4;
+                } else {
+                    value = 0.0;
+                }
+
+                const double modulationValue = value * envAmount[e];
+                switch (envTarget[e]) {
+                    case 1: envelopePitchSemitones += 12.0 * modulationValue; break;
+                    case 2: envelopeFM *= juce::jmax(0.0, 1.0 + modulationValue); break;
+                    case 3: envelopeAM += 0.5 * modulationValue; break;
+                    case 4: envelopeLevel *= juce::jmax(0.0, 1.0 + modulationValue); break;
+                    case 5: envelopeFeedback += 0.35 * modulationValue; break;
+                    default: break;
+                }
+            }
+
             // Note retrigger starts at the initial phase for every new note.
             // Voices progress independently, so chords do not reset held notes.
             const double wave1 = noteRetrigger[0]
@@ -252,15 +318,16 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             const double mod = wave1 * lfoDepth;
             const double mod2 = wave2 * lfo2Depth;
-            const double pitchSemitones = (lfoTarget == 1 ? 2.0 * mod : 0.0)
+            const double pitchSemitones = envelopePitchSemitones
+                                        + (lfoTarget == 1 ? 2.0 * mod : 0.0)
                                         + (lfo2Target == 1 ? 2.0 * mod2 : 0.0);
             const double pitchFactor = pitchSemitones != 0.0 ? std::pow(2.0, pitchSemitones / 12.0) : 1.0;
             const double tremolo = (lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0)
                                  * (lfo2Target == 2 ? 1.0 - 0.5 * lfo2Depth + 0.5 * mod2 : 1.0);
-            const double modulatedFMDepth = juce::jmax(0.0, depth
+            const double modulatedFMDepth = juce::jmax(0.0, depth * envelopeFM
                 * (lfoTarget == 3 ? 1.0 + mod : 1.0)
                 * (lfo2Target == 3 ? 1.0 + mod2 : 1.0));
-            const double modulatedAMDepth = juce::jlimit(0.0, 1.0, am
+            const double modulatedAMDepth = juce::jlimit(0.0, 1.0, am + envelopeAM
                 + (lfoTarget == 4 ? 0.5 * mod : 0.0)
                 + (lfo2Target == 4 ? 0.5 * mod2 : 0.0));
             const double bend = pitchBendSemitones[(size_t)(v.midiChannel - 1)];
@@ -304,6 +371,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                                             + (matrix2Enabled ? mod2 * matrix2FM[i] : 0.0);
                 const double opFMDepth = juce::jmax(0.0, modulatedFMDepth * (1.0 + fmMatrixAmount));
                 const double opFeedbackAmount = juce::jlimit(0.0, 1.0, feedback[i]
+                    + envelopeFeedback
                     + (matrixEnabled ? 0.5 * mod * matrixFeedback[i] : 0.0)
                     + (matrix2Enabled ? 0.5 * mod2 * matrix2Feedback[i] : 0.0));
                 const double phase = v.phase[i] + modulation[i] * opFMDepth
@@ -335,7 +403,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             const double sum = carrierSum / juce::jmax(1, carrierCount);
             const double amSource = 0.5 + 0.5 * op[5];
-            mix += sum * ((1.0 - modulatedAMDepth) + modulatedAMDepth * amSource) * tremolo * v.envelope * v.velocity;
+            mix += sum * ((1.0 - modulatedAMDepth) + modulatedAMDepth * amSource) * tremolo * envelopeLevel * v.envelope * v.velocity;
         }
         const float sample = (float)(std::tanh(mix * output));
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
@@ -397,6 +465,15 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("lfo2PhaseOffset", 0.0f);
     set("lfoRetrigger", 0.0f);
     set("lfo2Retrigger", 0.0f);
+    for (int i = 0; i < 2; ++i) {
+        const auto base = "modEnv" + juce::String(i + 1);
+        set(base + "Attack", 0.01f);
+        set(base + "Decay", 0.35f);
+        set(base + "Sustain", 0.7f);
+        set(base + "Release", 0.4f);
+        set(base + "Amount", 0.0f);
+        set(base + "Target", 0.0f);
+    }
     for (int i = 0; i < 6; ++i) {
         const auto op = juce::String(i);
         set("lfoOpPitch" + op, 0.0f);
