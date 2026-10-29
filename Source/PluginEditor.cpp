@@ -19,6 +19,10 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
         add(levels[i], "level" + juce::String(i), true);
+        add(opAttacks[i], "opAttack" + juce::String(i), false);
+        add(opDecays[i], "opDecay" + juce::String(i), false);
+        add(opSustains[i], "opSustain" + juce::String(i), false);
+        add(opReleases[i], "opRelease" + juce::String(i), false);
     }
     setSize(1496, 990);
     setResizable(true, true);
@@ -72,6 +76,10 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText(i < 2 ? "CARRIER" : "FM MOD", x + 150, 358, 80, 23, juce::Justification::centred);
         g.drawText("Frequency ratio", x + 18, 395, 195, 20, juce::Justification::left);
         g.drawText("Output level", x + 18, 530, 195, 20, juce::Justification::left);
+        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        const char* adsrLabels[] = { "A", "D", "S", "R" };
+        for (int k = 0; k < 4; ++k)
+            g.drawText(adsrLabels[k], x + 18 + 54*k, 672, 48, 16, juce::Justification::centred);
     }
     g.setColour(juce::Colour(0xff29323b)); g.fillRoundedRectangle(30, 772, 1432, 149, 4);
     g.setColour(line); g.drawRoundedRectangle(30, 772, 1432, 149, 4, 1);
@@ -92,6 +100,10 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(output, 1190, 819, 100, 100);
     for (int i = 0; i < 6; ++i) {
         fit(ratios[i], 43 + 238*i, 420, 209, 88);
-        fit(levels[i], 85 + 238*i, 561, 66, 174);
+        fit(levels[i], 85 + 238*i, 548, 66, 112);
+        fit(opAttacks[i], 34 + 238*i, 689, 52, 62);
+        fit(opDecays[i], 88 + 238*i, 689, 52, 62);
+        fit(opSustains[i], 142 + 238*i, 689, 52, 62);
+        fit(opReleases[i], 196 + 238*i, 689, 52, 62);
     }
 }
