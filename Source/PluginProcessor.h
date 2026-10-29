@@ -36,6 +36,10 @@ private:
         double feedbackSample[6] {};
         std::array<double, 2> noteLfoPhases {}; // independent modulation per MIDI voice
         // Two independent note-triggered modulation ADSRs (not operator envelopes).
+        // Two zero-delay-feedback state-variable filter stages per MIDI voice.
+        // Keeping integrators per voice avoids shared-state interference between notes.
+        struct FilterIntegrator { double ic1eq = 0.0, ic2eq = 0.0; };
+        std::array<FilterIntegrator, 2> filterIntegrators {};
         std::array<double, 2> modulationEnvelope {};
         std::array<double, 2> modulationReleaseStart {};
         std::array<int, 2> modulationStage {}; // 0=A 1=D 2=S 3=R 4=finished
@@ -47,6 +51,9 @@ private:
     };
     std::array<Voice, 16> voices {};
     double rate = 44100.0;
+    juce::SmoothedValue<double, juce::ValueSmoothingTypes::Multiplicative> cutoffSmoother;
+    juce::SmoothedValue<double> resonanceSmoother, filterMixSmoother;
+    int lastFilterMode = 0;
     std::array<double, 2> lfoPhases {}; // LFO 1 and LFO 2 run independently
     std::array<std::atomic<float>, 2> lfoDisplayPhases {}; // audio-to-UI snapshots, lock-free
     std::array<double, 16> pitchBendSemitones {};
