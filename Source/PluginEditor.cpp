@@ -108,6 +108,10 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     presetSearch.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xff77bfe6));
     presetSearch.onTextChange = [this] { refreshUserPresets(); };
     addAndMakeVisible(presetSearch);
+    clearPresetSearch.onClick = [this] { presetSearch.clear(); presetCategory.setSelectedId(1); refreshUserPresets(); };
+    addAndMakeVisible(clearPresetSearch);
+    presetCategory.onChange = [this] { refreshUserPresets(); };
+    addAndMakeVisible(presetCategory);
     refreshUserPresets();
     setSize(1496, 990);
     setResizable(true, true);
@@ -208,7 +212,9 @@ void FMEmancipationAudioProcessorEditor::resized()
     fit(savePresetButton, 332, 163, 130, 39);
     fit(loadPresetButton, 470, 163, 120, 39);
     fit(userPresetSelector, 54, 210, 270, 32);
-    fit(presetSearch, 332, 210, 258, 32);
+    fit(presetSearch, 332, 210, 170, 32);
+    fit(clearPresetSearch, 510, 210, 80, 32);
+    fit(presetCategory, 54, 250, 536, 30);
     fit(algorithm, 795, 151, 94, 79);
     fit(fmDepth, 60, 819, 80, 100);
     fit(amDepth, 164, 819, 80, 100);
@@ -231,12 +237,29 @@ void FMEmancipationAudioProcessorEditor::refreshUserPresets()
     std::sort(userPresetFiles.begin(), userPresetFiles.end(), [](const juce::File& a, const juce::File& b) {
         return a.getFullPathName().compareIgnoreCase(b.getFullPathName()) < 0;
     });
+    const auto previousCategory = presetCategory.getText();
+    juce::StringArray categories;
+    categories.add("TOUTES CATEGORIES");
+    for (const auto& file : userPresetFiles) {
+        auto name = file.getParentDirectory().getRelativePathFrom(folder);
+        if (name == "." || name.isEmpty()) name = "Sans categorie";
+        categories.addIfNotAlreadyThere(name);
+    }
+    categories.sort(true);
+    presetCategory.clear(juce::dontSendNotification);
+    for (int i = 0; i < categories.size(); ++i)
+        presetCategory.addItem(categories[i], i + 1);
+    const auto categoryIndex = categories.indexOf(previousCategory);
+    presetCategory.setSelectedId(categoryIndex >= 0 ? categoryIndex + 1 : categories.indexOf("TOUTES CATEGORIES") + 1,
+                                 juce::dontSendNotification);
+    const auto activeCategory = presetCategory.getText();
     userPresetSelector.clear(juce::dontSendNotification);
     filteredPresetFiles.clear();
     const auto query = presetSearch.getText().trim();
     for (int i = 0; i < userPresetFiles.size(); ++i) {
         auto category = userPresetFiles[i].getParentDirectory().getRelativePathFrom(folder);
         if (category == "." || category.isEmpty()) category = "Sans categorie";
+        if (activeCategory != "TOUTES CATEGORIES" && category != activeCategory) continue;
         const auto label = category + " / " + userPresetFiles[i].getFileNameWithoutExtension();
         if (query.isNotEmpty() && !label.containsIgnoreCase(query)) continue;
         filteredPresetFiles.add(userPresetFiles[i]);
