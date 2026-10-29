@@ -19,6 +19,9 @@ private:
     void refreshUserPresets();
     juce::Array<juce::File> userPresetFiles;
     std::array<juce::Slider, 6> ratios, levels;
+    std::array<juce::Slider, 6> feedbackControls, velocityControls;
+    std::array<juce::ComboBox, 6> waveformControls;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> waveformAttachments;
     std::array<juce::Slider, 6> opAttacks, opDecays, opSustains, opReleases;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FMEmancipationAudioProcessorEditor)
