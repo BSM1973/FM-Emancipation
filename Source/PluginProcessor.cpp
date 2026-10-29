@@ -17,6 +17,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("output", "Output gain", 0, 1, 0.35f);
     f("attack", "Attack", 0.001f, 5, 0.01f);
     f("release", "Release", 0.01f, 8, 0.35f);
+    // The LFO defaults to OFF and does not alter existing sessions.
+    f("lfoWave", "LFO waveform", 0.0f, 3.0f, 0.0f);
+    f("lfoRate", "LFO free rate (Hz)", 0.05f, 20.0f, 5.0f);
+    f("lfoSync", "LFO tempo synchronization", 0.0f, 1.0f, 0.0f);
+    f("lfoDivision", "LFO beat division", 0.0f, 6.0f, 2.0f);
+    f("lfoDepth", "LFO modulation amount", 0.0f, 1.0f, 0.0f);
+    f("lfoTarget", "LFO destination", 0.0f, 4.0f, 0.0f);
     for (int i = 0; i < 6; ++i) {
         f("ratio" + juce::String(i), "OP " + juce::String(i + 1) + " ratio", 0.25f, 16, i == 2 ? 3.0f : 1.0f);
         f("level" + juce::String(i), "OP " + juce::String(i + 1) + " level", 0, 1, i < 2 ? 0.8f : 0.5f);
@@ -40,7 +47,7 @@ bool FMEmancipationAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) 
     return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         || l.getMainOutputChannelSet() == juce::AudioChannelSet::mono();
 }
-void FMEmancipationAudioProcessor::prepareToPlay(double sr, int) { rate = sr > 0 ? sr : 44100.0; voices = {}; pitchBendSemitones.fill(0.0); }
+void FMEmancipationAudioProcessor::prepareToPlay(double sr, int) { rate = sr > 0 ? sr : 44100.0; voices = {}; pitchBendSemitones.fill(0.0); lfoPhase = 0.0; }
 void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -52,6 +59,25 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const double output = param("output");
     const double attack = param("attack");
     const double release = param("release");
+    const int lfoWave = juce::jlimit(0, 3, (int)std::round(param("lfoWave")));
+    const double lfoRate = param("lfoRate");
+    const bool lfoSync = param("lfoSync") >= 0.5f;
+    const int lfoDivision = juce::jlimit(0, 6, (int)std::round(param("lfoDivision")));
+    const double lfoDepth = param("lfoDepth");
+    const int lfoTarget = juce::jlimit(0, 4, (int)std::round(param("lfoTarget")));
+
+    // Quarter-note units per complete cycle: 1 bar, 1/2, 1/4,
+    // 1/8, 1/16, dotted 1/8, and triplet 1/8.
+    static constexpr double lfoBeatsPerCycle[] = { 4.0, 2.0, 1.0, 0.5, 0.25, 0.75, 1.0 / 3.0 };
+    double hostBpm = 120.0;
+    if (auto* playHead = getPlayHead()) {
+        if (const auto position = playHead->getPosition()) {
+            if (const auto bpm = position->getBpm())
+                if (std::isfinite(*bpm) && *bpm > 0.0) hostBpm = *bpm;
+        }
+    }
+    const double lfoHz = lfoSync ? hostBpm / (60.0 * lfoBeatsPerCycle[lfoDivision]) : lfoRate;
+    const double lfoPhaseStep = twoPi * juce::jlimit(0.0, rate * 0.45, lfoHz) / rate;
     double ratios[6], levels[6], opAttack[6], opDecay[6], opSustain[6], opRelease[6];
     for (int i = 0; i < 6; ++i) {
         ratios[i] = param("ratio" + juce::String(i));
@@ -93,6 +119,19 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             hasEvent = iterator.getNextEvent(message, eventSample);
         }
+        const double phaseFraction = lfoPhase / twoPi;
+        double lfoValue = std::sin(lfoPhase);
+        if (lfoWave == 1) lfoValue = 1.0 - 4.0 * std::abs(phaseFraction - 0.5);
+        else if (lfoWave == 2) lfoValue = 2.0 * phaseFraction - 1.0;
+        else if (lfoWave == 3) lfoValue = phaseFraction < 0.5 ? 1.0 : -1.0;
+        lfoPhase += lfoPhaseStep;
+        if (lfoPhase >= twoPi) lfoPhase -= twoPi * std::floor(lfoPhase / twoPi);
+
+        const double mod = lfoValue * lfoDepth;
+        const double pitchFactor = lfoTarget == 1 ? std::pow(2.0, 2.0 * mod / 12.0) : 1.0;
+        const double tremolo = lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0;
+        const double modulatedFMDepth = lfoTarget == 3 ? juce::jmax(0.0, depth * (1.0 + mod)) : depth;
+        const double modulatedAMDepth = lfoTarget == 4 ? juce::jlimit(0.0, 1.0, am + 0.5 * mod) : am;
         double mix = 0.0;
         for (auto& v : voices) {
             if (v.note < 0) continue;
@@ -101,7 +140,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                                      : juce::jmin(1.0, v.envelope + step);
             if (v.releasing && v.envelope <= 0) { v = {}; continue; }
             const double bend = pitchBendSemitones[(size_t)(v.midiChannel - 1)];
-            const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note) * std::pow(2.0, bend / 12.0);
+            const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note) * std::pow(2.0, bend / 12.0) * pitchFactor;
             double op[6] {};
             // Twenty explicit six-operator routings. Each row lists the
             // destination operator for OP1..OP6 (-1 means a carrier).
@@ -137,7 +176,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 } else {
                     env = juce::jmax(0.0, env - 1.0 / (rate * opRelease[i]));
                 }
-                const double phase = v.phase[i] + modulation[i] * depth + v.feedbackSample[i] * feedback[i] * 4.0;
+                const double phase = v.phase[i] + modulation[i] * modulatedFMDepth + v.feedbackSample[i] * feedback[i] * 4.0;
                 const double unit = (phase - twoPi * std::floor(phase / twoPi)) / twoPi;
                 double wave = std::sin(phase);
                 if (waveType[i] == 1) wave = 1.0 - 4.0 * std::abs(unit - 0.5);
@@ -157,7 +196,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             const double sum = carrierSum / juce::jmax(1, carrierCount);
             const double amSource = 0.5 + 0.5 * op[5];
-            mix += sum * ((1.0 - am) + am * amSource) * v.envelope * v.velocity;
+            mix += sum * ((1.0 - modulatedAMDepth) + modulatedAMDepth * amSource) * tremolo * v.envelope * v.velocity;
         }
         const float sample = (float)(std::tanh(mix * output));
         for (int c = 0; c < buffer.getNumChannels(); ++c) buffer.setSample(c, s, sample);
@@ -187,6 +226,12 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("fmDepth", 0.7f + brightness * 5.5f + (family % 3) * 0.5f);
     set("amDepth", family == 1 || family == 8 ? 0.35f : 0.05f);
     set("output", 0.3f);
+    set("lfoWave", 0.0f);
+    set("lfoRate", 5.0f);
+    set("lfoSync", 0.0f);
+    set("lfoDivision", 2.0f);
+    set("lfoDepth", 0.0f);
+    set("lfoTarget", 0.0f);
     set("attack", family == 4 || family == 9 ? 0.5f + brightness : 0.005f);
     set("release", family == 4 || family == 9 ? 2.0f + brightness : 0.25f);
     for (int i = 0; i < 6; ++i) {
