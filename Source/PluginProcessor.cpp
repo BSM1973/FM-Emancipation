@@ -24,6 +24,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("lfoDivision", "LFO beat division", 0.0f, 6.0f, 2.0f);
     f("lfoDepth", "LFO modulation amount", 0.0f, 1.0f, 0.0f);
     f("lfoTarget", "LFO destination", 0.0f, 5.0f, 0.0f);
+    // Second independent modulation oscillator; OFF for existing presets.
+    f("lfo2Wave", "LFO 2 waveform", 0.0f, 3.0f, 0.0f);
+    f("lfo2Rate", "LFO 2 free rate (Hz)", 0.05f, 20.0f, 1.0f);
+    f("lfo2Sync", "LFO 2 tempo synchronization", 0.0f, 1.0f, 0.0f);
+    f("lfo2Division", "LFO 2 beat division", 0.0f, 6.0f, 2.0f);
+    f("lfo2Depth", "LFO 2 modulation amount", 0.0f, 1.0f, 0.0f);
+    f("lfo2Target", "LFO 2 destination", 0.0f, 5.0f, 0.0f);
     for (int i = 0; i < 6; ++i) {
         f("ratio" + juce::String(i), "OP " + juce::String(i + 1) + " ratio", 0.25f, 16, i == 2 ? 3.0f : 1.0f);
         f("level" + juce::String(i), "OP " + juce::String(i + 1) + " level", 0, 1, i < 2 ? 0.8f : 0.5f);
@@ -45,6 +52,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
         f("lfoOpLevel" + op, "OP " + juce::String(i + 1) + " LFO level", -1.0f, 1.0f, 0.0f);
         f("lfoOpFM" + op, "OP " + juce::String(i + 1) + " LFO FM", -1.0f, 1.0f, 0.0f);
         f("lfoOpFeedback" + op, "OP " + juce::String(i + 1) + " LFO feedback", -1.0f, 1.0f, 0.0f);
+        f("lfo2OpPitch" + op, "OP " + juce::String(i + 1) + " LFO 2 pitch", -1.0f, 1.0f, 0.0f);
+        f("lfo2OpLevel" + op, "OP " + juce::String(i + 1) + " LFO 2 level", -1.0f, 1.0f, 0.0f);
+        f("lfo2OpFM" + op, "OP " + juce::String(i + 1) + " LFO 2 FM", -1.0f, 1.0f, 0.0f);
+        f("lfo2OpFeedback" + op, "OP " + juce::String(i + 1) + " LFO 2 feedback", -1.0f, 1.0f, 0.0f);
     }
     return { p.begin(), p.end() };
 }
@@ -56,7 +67,7 @@ bool FMEmancipationAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) 
     return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
         || l.getMainOutputChannelSet() == juce::AudioChannelSet::mono();
 }
-void FMEmancipationAudioProcessor::prepareToPlay(double sr, int) { rate = sr > 0 ? sr : 44100.0; voices = {}; pitchBendSemitones.fill(0.0); lfoPhase = 0.0; }
+void FMEmancipationAudioProcessor::prepareToPlay(double sr, int) { rate = sr > 0 ? sr : 44100.0; voices = {}; pitchBendSemitones.fill(0.0); lfoPhases.fill(0.0); }
 void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -74,6 +85,12 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const int lfoDivision = juce::jlimit(0, 6, (int)std::round(param("lfoDivision")));
     const double lfoDepth = param("lfoDepth");
     const int lfoTarget = juce::jlimit(0, 5, (int)std::round(param("lfoTarget")));
+    const int lfo2Wave = juce::jlimit(0, 3, (int)std::round(param("lfo2Wave")));
+    const double lfo2Rate = param("lfo2Rate");
+    const bool lfo2Sync = param("lfo2Sync") >= 0.5f;
+    const int lfo2Division = juce::jlimit(0, 6, (int)std::round(param("lfo2Division")));
+    const double lfo2Depth = param("lfo2Depth");
+    const int lfo2Target = juce::jlimit(0, 5, (int)std::round(param("lfo2Target")));
 
     // Quarter-note units per complete cycle: 1 bar, 1/2, 1/4,
     // 1/8, 1/16, dotted 1/8, and triplet 1/8.
@@ -87,6 +104,8 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     }
     const double lfoHz = lfoSync ? hostBpm / (60.0 * lfoBeatsPerCycle[lfoDivision]) : lfoRate;
     const double lfoPhaseStep = twoPi * juce::jlimit(0.0, rate * 0.45, lfoHz) / rate;
+    const double lfo2Hz = lfo2Sync ? hostBpm / (60.0 * lfoBeatsPerCycle[lfo2Division]) : lfo2Rate;
+    const double lfo2PhaseStep = twoPi * juce::jlimit(0.0, rate * 0.45, lfo2Hz) / rate;
     double ratios[6], levels[6], opAttack[6], opDecay[6], opSustain[6], opRelease[6];
     for (int i = 0; i < 6; ++i) {
         ratios[i] = param("ratio" + juce::String(i));
@@ -104,12 +123,17 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         waveType[i] = juce::jlimit(0, 3, (int)std::round(param("wave" + juce::String(i))));
     }
     double matrixPitch[6], matrixLevel[6], matrixFM[6], matrixFeedback[6];
+    double matrix2Pitch[6], matrix2Level[6], matrix2FM[6], matrix2Feedback[6];
     for (int i = 0; i < 6; ++i) {
         const auto op = juce::String(i);
         matrixPitch[i] = param("lfoOpPitch" + op);
         matrixLevel[i] = param("lfoOpLevel" + op);
         matrixFM[i] = param("lfoOpFM" + op);
         matrixFeedback[i] = param("lfoOpFeedback" + op);
+        matrix2Pitch[i] = param("lfo2OpPitch" + op);
+        matrix2Level[i] = param("lfo2OpLevel" + op);
+        matrix2FM[i] = param("lfo2OpFM" + op);
+        matrix2Feedback[i] = param("lfo2OpFeedback" + op);
     }
     juce::MidiBuffer::Iterator iterator(midi);
     juce::MidiMessage message;
@@ -136,20 +160,37 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             hasEvent = iterator.getNextEvent(message, eventSample);
         }
-        const double phaseFraction = lfoPhase / twoPi;
-        double lfoValue = std::sin(lfoPhase);
+        const double phaseFraction = lfoPhases[0] / twoPi;
+        double lfoValue = std::sin(lfoPhases[0]);
         if (lfoWave == 1) lfoValue = 1.0 - 4.0 * std::abs(phaseFraction - 0.5);
         else if (lfoWave == 2) lfoValue = 2.0 * phaseFraction - 1.0;
         else if (lfoWave == 3) lfoValue = phaseFraction < 0.5 ? 1.0 : -1.0;
-        lfoPhase += lfoPhaseStep;
-        if (lfoPhase >= twoPi) lfoPhase -= twoPi * std::floor(lfoPhase / twoPi);
+        lfoPhases[0] += lfoPhaseStep;
+        if (lfoPhases[0] >= twoPi) lfoPhases[0] -= twoPi * std::floor(lfoPhases[0] / twoPi);
+
+        const double phaseFraction2 = lfoPhases[1] / twoPi;
+        double lfo2Value = std::sin(lfoPhases[1]);
+        if (lfo2Wave == 1) lfo2Value = 1.0 - 4.0 * std::abs(phaseFraction2 - 0.5);
+        else if (lfo2Wave == 2) lfo2Value = 2.0 * phaseFraction2 - 1.0;
+        else if (lfo2Wave == 3) lfo2Value = phaseFraction2 < 0.5 ? 1.0 : -1.0;
+        lfoPhases[1] += lfo2PhaseStep;
+        if (lfoPhases[1] >= twoPi) lfoPhases[1] -= twoPi * std::floor(lfoPhases[1] / twoPi);
 
         const double mod = lfoValue * lfoDepth;
+        const double mod2 = lfo2Value * lfo2Depth;
         const bool matrixEnabled = lfoTarget == 5 && lfoDepth > 0.0;
-        const double pitchFactor = lfoTarget == 1 ? std::pow(2.0, 2.0 * mod / 12.0) : 1.0;
-        const double tremolo = lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0;
-        const double modulatedFMDepth = lfoTarget == 3 ? juce::jmax(0.0, depth * (1.0 + mod)) : depth;
-        const double modulatedAMDepth = lfoTarget == 4 ? juce::jlimit(0.0, 1.0, am + 0.5 * mod) : am;
+        const bool matrix2Enabled = lfo2Target == 5 && lfo2Depth > 0.0;
+        const double pitchSemitones = (lfoTarget == 1 ? 2.0 * mod : 0.0)
+                                    + (lfo2Target == 1 ? 2.0 * mod2 : 0.0);
+        const double pitchFactor = std::pow(2.0, pitchSemitones / 12.0);
+        const double tremolo = (lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0)
+                             * (lfo2Target == 2 ? 1.0 - 0.5 * lfo2Depth + 0.5 * mod2 : 1.0);
+        const double modulatedFMDepth = juce::jmax(0.0, depth
+            * (lfoTarget == 3 ? 1.0 + mod : 1.0)
+            * (lfo2Target == 3 ? 1.0 + mod2 : 1.0));
+        const double modulatedAMDepth = juce::jlimit(0.0, 1.0, am
+            + (lfoTarget == 4 ? 0.5 * mod : 0.0)
+            + (lfo2Target == 4 ? 0.5 * mod2 : 0.0));
         double mix = 0.0;
         for (auto& v : voices) {
             if (v.note < 0) continue;
@@ -194,10 +235,12 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 } else {
                     env = juce::jmax(0.0, env - 1.0 / (rate * opRelease[i]));
                 }
-                const double opFMDepth = matrixEnabled
-                    ? juce::jmax(0.0, modulatedFMDepth * (1.0 + mod * matrixFM[i])) : modulatedFMDepth;
-                const double opFeedbackAmount = matrixEnabled
-                    ? juce::jlimit(0.0, 1.0, feedback[i] + 0.5 * mod * matrixFeedback[i]) : feedback[i];
+                const double fmMatrixAmount = (matrixEnabled ? mod * matrixFM[i] : 0.0)
+                                            + (matrix2Enabled ? mod2 * matrix2FM[i] : 0.0);
+                const double opFMDepth = juce::jmax(0.0, modulatedFMDepth * (1.0 + fmMatrixAmount));
+                const double opFeedbackAmount = juce::jlimit(0.0, 1.0, feedback[i]
+                    + (matrixEnabled ? 0.5 * mod * matrixFeedback[i] : 0.0)
+                    + (matrix2Enabled ? 0.5 * mod2 * matrix2Feedback[i] : 0.0));
                 const double phase = v.phase[i] + modulation[i] * opFMDepth
                     + v.feedbackSample[i] * opFeedbackAmount * 4.0;
                 const double unit = (phase - twoPi * std::floor(phase / twoPi)) / twoPi;
@@ -207,9 +250,11 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 else if (waveType[i] == 3) wave = unit < 0.5 ? 1.0 : -1.0;
                 v.feedbackSample[i] = wave;
                 const double velocityGain = 1.0 - velocitySensitivity[i] + velocitySensitivity[i] * v.velocity;
-                const double opLevelFactor = matrixEnabled
-                    ? juce::jmax(0.0, 1.0 - 0.5 * std::abs(matrixLevel[i]) * lfoDepth
-                                             + 0.5 * mod * matrixLevel[i]) : 1.0;
+                const double levelBaseline = (matrixEnabled ? std::abs(matrixLevel[i]) * lfoDepth : 0.0)
+                    + (matrix2Enabled ? std::abs(matrix2Level[i]) * lfo2Depth : 0.0);
+                const double opLevelFactor = juce::jmax(0.0, 1.0 - 0.5 * levelBaseline
+                    + (matrixEnabled ? 0.5 * mod * matrixLevel[i] : 0.0)
+                    + (matrix2Enabled ? 0.5 * mod2 * matrix2Level[i] : 0.0));
                 op[i] = wave * levels[i] * env * velocityGain * opLevelFactor;
                 if (route[i] < 0) {
                     carrierSum += op[i];
@@ -217,8 +262,9 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 } else {
                     modulation[route[i]] += op[i];
                 }
-                const double opPitchFactor = matrixEnabled
-                    ? std::pow(2.0, (2.0 * mod * matrixPitch[i]) / 12.0) : 1.0;
+                const double opPitchOffset = (matrixEnabled ? 2.0 * mod * matrixPitch[i] : 0.0)
+                    + (matrix2Enabled ? 2.0 * mod2 * matrix2Pitch[i] : 0.0);
+                const double opPitchFactor = std::pow(2.0, opPitchOffset / 12.0);
                 v.phase[i] += twoPi * hz * ratios[i] * opPitchFactor / rate;
                 if (v.phase[i] >= twoPi) v.phase[i] = std::fmod(v.phase[i], twoPi);
             }
@@ -260,12 +306,22 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
     set("lfoDivision", 2.0f);
     set("lfoDepth", 0.0f);
     set("lfoTarget", 0.0f);
+    set("lfo2Wave", 0.0f);
+    set("lfo2Rate", 1.0f);
+    set("lfo2Sync", 0.0f);
+    set("lfo2Division", 2.0f);
+    set("lfo2Depth", 0.0f);
+    set("lfo2Target", 0.0f);
     for (int i = 0; i < 6; ++i) {
         const auto op = juce::String(i);
         set("lfoOpPitch" + op, 0.0f);
         set("lfoOpLevel" + op, 0.0f);
         set("lfoOpFM" + op, 0.0f);
         set("lfoOpFeedback" + op, 0.0f);
+        set("lfo2OpPitch" + op, 0.0f);
+        set("lfo2OpLevel" + op, 0.0f);
+        set("lfo2OpFM" + op, 0.0f);
+        set("lfo2OpFeedback" + op, 0.0f);
     }
     set("attack", family == 4 || family == 9 ? 0.5f + brightness : 0.005f);
     set("release", family == 4 || family == 9 ? 2.0f + brightness : 0.25f);
