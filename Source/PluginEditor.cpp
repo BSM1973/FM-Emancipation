@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include <algorithm>
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p)
     : juce::AudioProcessorEditor(&p), processor(p)
 {
@@ -92,12 +93,9 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     userPresetSelector.onChange = [this] {
         const auto id = userPresetSelector.getSelectedId();
         if (id <= 0) return;
-        const auto folder = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-            .getChildFile("FM Emancipation");
-        const auto files = folder.findChildFiles(juce::File::findFiles, false, "*.fme");
-        if (id > files.size()) return;
+        if (id > userPresetFiles.size()) return;
         juce::MemoryBlock data;
-        if (files[id - 1].loadFileAsData(data) && !data.isEmpty()) {
+        if (userPresetFiles[id - 1].loadFileAsData(data) && !data.isEmpty()) {
             processor.setStateInformation(data.getData(), (int)data.getSize());
             presetSelector.setSelectedId(processor.getCurrentProgram() + 1, juce::dontSendNotification);
             repaint();
@@ -222,9 +220,15 @@ void FMEmancipationAudioProcessorEditor::refreshUserPresets()
 {
     const auto folder = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
         .getChildFile("FM Emancipation");
-    const auto files = folder.findChildFiles(juce::File::findFiles, false, "*.fme");
+    userPresetFiles = folder.findChildFiles(juce::File::findFiles, true, "*.fme");
+    std::sort(userPresetFiles.begin(), userPresetFiles.end(), [](const juce::File& a, const juce::File& b) {
+        return a.getFullPathName().compareIgnoreCase(b.getFullPathName()) < 0;
+    });
     userPresetSelector.clear(juce::dontSendNotification);
-    for (int i = 0; i < files.size(); ++i)
-        userPresetSelector.addItem(files[i].getFileNameWithoutExtension(), i + 1);
-    userPresetSelector.setTextWhenNothingSelected("MES PRESETS (" + juce::String(files.size()) + ")");
+    for (int i = 0; i < userPresetFiles.size(); ++i) {
+        auto category = userPresetFiles[i].getParentDirectory().getRelativePathFrom(folder);
+        if (category == "." || category.isEmpty()) category = "Sans categorie";
+        userPresetSelector.addItem(category + " / " + userPresetFiles[i].getFileNameWithoutExtension(), i + 1);
+    }
+    userPresetSelector.setTextWhenNothingSelected("MES PRESETS (" + juce::String(userPresetFiles.size()) + ")");
 }
