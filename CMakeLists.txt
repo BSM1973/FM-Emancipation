@@ -6,7 +6,7 @@ include(FetchContent)
 FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.10 GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(JUCE)
 juce_add_plugin(FMEmancipation
- COMPANY_NAME "BSM"
+ COMPANY_NAME "Liberty"
  BUNDLE_ID "com.bsm.fmemancipation"
  PLUGIN_MANUFACTURER_CODE BSM1
  PLUGIN_CODE FME1
