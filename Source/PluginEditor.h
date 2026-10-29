@@ -15,6 +15,7 @@ private:
     juce::TextButton lfoMatrixButton { "MATRICE" };
     juce::TextButton lfoPhaseModeButton { "PHASE / MODE" };
     juce::TextButton modulationEnvelopesButton { "ENV MOD 1/2" };
+    juce::TextButton filterButton { "FILTRE" };
     juce::ComboBox lfoWaveform, lfoSync, lfoDivision, lfoDestination;
     juce::ComboBox lfo2Waveform, lfo2Sync, lfo2Division, lfo2Destination;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lfoComboAttachments;
