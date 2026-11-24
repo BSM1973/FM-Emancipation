@@ -11,8 +11,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reject corrupt UI text and implicit Unicode conversions
+        run: python tools/check_unicode.py
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build and run Unicode test
+        run: |
+          cmake --build build --config Release --target FMEmancipationTextTest --parallel 2
+          ctest --test-dir build -C Release --output-on-failure
       - name: Build
         run: cmake --build build --config Release --target FMEmancipation_VST3 --parallel 2
       - name: Package VST3 on macOS

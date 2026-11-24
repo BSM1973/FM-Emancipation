@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "LibertyUtf8.h"
 #include <algorithm>
 #include <cmath>
 
@@ -276,7 +277,7 @@ public:
     {
         setSize(926, 615);
         filterMode.addItemList({
-            "DÉSACTIVÉ", "PASSE-BAS 12 dB", "PASSE-BAS 24 dB",
+            LIBERTY_UTF8(u8"DÉSACTIVÉ"), "PASSE-BAS 12 dB", "PASSE-BAS 24 dB",
             "PASSE-HAUT 12 dB", "PASSE-HAUT 24 dB",
             "PASSE-BANDE 12 dB", "COUPE-BANDE 12 dB"
         }, 1);
@@ -308,9 +309,9 @@ public:
                     processor.parameters, paramIds[i], slider));
         }
         controls[0].setTextValueSuffix(" Hz");
-        controls[0].setTooltip("Fréquence de coupure du filtre, de 25 Hz à 18 kHz");
-        controls[1].setTooltip("Résonance autour de la fréquence de coupure");
-        controls[2].setTooltip("Dosage de signal filtré, de 0 à 100 %");
+        controls[0].setTooltip(LIBERTY_UTF8(u8"Fréquence de coupure du filtre, de 25 Hz à 18 kHz"));
+        controls[1].setTooltip(LIBERTY_UTF8(u8"Résonance autour de la fréquence de coupure"));
+        controls[2].setTooltip(LIBERTY_UTF8(u8"Dosage de signal filtré, de 0 à 100 %"));
         controls[3].setTooltip("Modulation bipolaire de la coupure par l'enveloppe ENV 1");
         controls[4].setTooltip("Modulation bipolaire de la coupure par l'enveloppe ENV 2");
         static constexpr const char* lfoRoutingIds[] = {
@@ -346,7 +347,7 @@ public:
         g.drawText("FILTRE MULTIMODE", 26, 18, 670, 35, juce::Justification::left);
         g.setColour(juce::Colour(0xffb5c6d6));
         g.setFont(juce::FontOptions(12.0f));
-        g.drawText("Filtre par voix • 12/24 dB • ENV 1 et ENV 2 • mélange progressif",
+        g.drawText(LIBERTY_UTF8(u8"Filtre par voix • 12/24 dB • ENV 1 et ENV 2 • mélange progressif"),
                    26, 55, 860, 22, juce::Justification::left);
 
         g.setColour(juce::Colour(0xff243d50));
@@ -357,8 +358,8 @@ public:
         g.setColour(juce::Colour(0xffc8e7f9));
         g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
         g.drawText("TYPE", 30, 102, 182, 20, juce::Justification::centred);
-        static constexpr const char* labels[] = {
-            "COUPURE", "RÉSONANCE", "MIX", "ENV 1 → CUT", "ENV 2 → CUT"
+        const juce::String labels[] = {
+            "COUPURE", LIBERTY_UTF8(u8"RÉSONANCE"), "MIX", LIBERTY_UTF8(u8"ENV 1 → CUT"), LIBERTY_UTF8(u8"ENV 2 → CUT")
         };
         for (int i = 0; i < 5; ++i)
             g.drawText(labels[i], 233 + 132 * i, 100, 116, 20, juce::Justification::centred);
@@ -423,11 +424,11 @@ public:
         g.setColour(juce::Colour(0xffd7efff).withAlpha(0.75f));
         g.drawLine(cursorX, graphTop, cursorX, graphBottom, 1.2f);
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-        g.drawText("RÉPONSE DU FILTRE  /  APERÇU INDICATIF", 48, 224, 440, 18,
+        g.drawText(LIBERTY_UTF8(u8"RÉPONSE DU FILTRE  /  APERÇU INDICATIF"), 48, 224, 440, 18,
                    juce::Justification::left);
         g.setColour(juce::Colour(0xffa7c7da));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawText("Les enveloppes et LFO modulent le filtre en temps réel. La courbe indique sa réponse de base.",
+        g.drawText(LIBERTY_UTF8(u8"Les enveloppes et LFO modulent le filtre en temps réel. La courbe indique sa réponse de base."),
                    34, 421, 865, 18, juce::Justification::centredLeft);
         g.setColour(juce::Colour(0xff243d50));
         g.fillRoundedRectangle(18.0f, 456.0f, 890.0f, 144.0f, 6.0f);
@@ -435,9 +436,9 @@ public:
         g.drawRoundedRectangle(18.0f, 456.0f, 890.0f, 144.0f, 6.0f, 1.0f);
         g.setColour(juce::Colour(0xff78c9fa));
         g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-        g.drawText("MODULATIONS LFO — FILTRE", 30, 466, 435, 20, juce::Justification::left);
-        static constexpr const char* routingNames[] = {
-            "LFO 1 → COUPURE", "LFO 2 → COUPURE", "LFO 1 → RÉSONANCE", "LFO 2 → RÉSONANCE"
+        g.drawText(LIBERTY_UTF8(u8"MODULATIONS LFO — FILTRE"), 30, 466, 435, 20, juce::Justification::left);
+        const juce::String routingNames[] = {
+            LIBERTY_UTF8(u8"LFO 1 → COUPURE"), LIBERTY_UTF8(u8"LFO 2 → COUPURE"), LIBERTY_UTF8(u8"LFO 1 → RÉSONANCE"), LIBERTY_UTF8(u8"LFO 2 → RÉSONANCE")
         };
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         for (int i = 0; i < 4; ++i) {
@@ -447,7 +448,7 @@ public:
         }
         g.setColour(juce::Colour(0xffa7c7da));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawText("Routages indépendants des destinations LFO. Régler l'intensité du LFO au-dessus de zéro.",
+        g.drawText(LIBERTY_UTF8(u8"Routages indépendants des destinations LFO. Régler l'intensité du LFO au-dessus de zéro."),
                    34, 594, 865, 16, juce::Justification::centredLeft);
     }
 
@@ -502,9 +503,9 @@ public:
         g.drawText("MATRICE DE MODULATION DES EFFETS", 22, 12, 800, 32, juce::Justification::left);
         g.setFont(juce::FontOptions(12.0f));
         g.setColour(juce::Colour(0xffafc9dc));
-        g.drawText("Routages bipolaires : -100 % à +100 %. Zéro = désactivé.", 22, 49, 790, 22,
+        g.drawText(LIBERTY_UTF8(u8"Routages bipolaires : -100 % à +100 %. Zéro = désactivé."), 22, 49, 790, 22,
                    juce::Justification::left);
-        static constexpr const char* cols[] { "PROFONDEUR CHORUS", "FEEDBACK DELAY", "MIX RÉVERBÉRATION" };
+        const juce::String cols[] { "PROFONDEUR CHORUS", "FEEDBACK DELAY", LIBERTY_UTF8(u8"MIX RÉVERBÉRATION") };
         for (int col = 0; col < 3; ++col) {
             g.setColour(juce::Colour(0xffc4e5ff));
             g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
@@ -543,7 +544,7 @@ public:
         setSize(1000, 570);
         matrixButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff174568));
         matrixButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffc4e5ff));
-        matrixButton.setTooltip("Matrice LFO/ENV vers Chorus, Delay et Réverbération");
+        matrixButton.setTooltip(LIBERTY_UTF8(u8"Matrice LFO/ENV vers Chorus, Delay et Réverbération"));
         matrixButton.onClick = [this, &processor] {
             juce::CallOutBox::launchAsynchronously(
                 std::make_unique<FMStereoEffectsModulation>(processor),
@@ -582,13 +583,13 @@ public:
             auto& combo = switches[(size_t)i];
             if (i == 4)
                 combo.addItemList({ "1 mesure", "1/2", "1/4", "1/8",
-                                    "1/8 pointée", "1/8 triolet" }, 1);
+                                    LIBERTY_UTF8(u8"1/8 pointée"), "1/8 triolet" }, 1);
             else if (i == 3)
                 combo.addItemList({ "Libre", "Tempo" }, 1);
             else if (i == 5)
-                combo.addItemList({ "Stéréo", "Ping-pong" }, 1);
+                combo.addItemList({ LIBERTY_UTF8(u8"Stéréo"), "Ping-pong" }, 1);
             else
-                combo.addItemList({ "Désactivé", "Activé" }, 1);
+                combo.addItemList({ LIBERTY_UTF8(u8"Désactivé"), LIBERTY_UTF8(u8"Activé") }, 1);
             combo.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
             combo.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
             combo.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
@@ -598,9 +599,9 @@ public:
                     processor.parameters, switchIds[i], combo));
         }
         knobs[3].setTooltip("Temps libre du delay (secondes) ; en mode Tempo, utiliser DIVISION");
-        knobs[4].setTooltip("Quantité de répétitions du delay, avec limitation à 85 %");
-        knobs[9].setTooltip("Dosage de la réverbération stéréo");
-        switches[5].setTooltip("Mode stéréo classique ou alternance gauche/droite");
+        knobs[4].setTooltip(LIBERTY_UTF8(u8"Quantité de répétitions du delay, avec limitation à 85 %"));
+        knobs[9].setTooltip(LIBERTY_UTF8(u8"Dosage de la réverbération stéréo"));
+        switches[5].setTooltip(LIBERTY_UTF8(u8"Mode stéréo classique ou alternance gauche/droite"));
     }
 
     void paint(juce::Graphics& g) override
@@ -608,13 +609,13 @@ public:
         g.fillAll(juce::Colour(0xff192b3a));
         g.setColour(juce::Colour(0xff78c9fa));
         g.setFont(juce::FontOptions(24.0f, juce::Font::bold));
-        g.drawText("EFFETS STÉRÉO", 24, 12, 650, 34, juce::Justification::centredLeft);
+        g.drawText(LIBERTY_UTF8(u8"EFFETS STÉRÉO"), 24, 12, 650, 34, juce::Justification::centredLeft);
         g.setFont(juce::FontOptions(12.0f));
         g.setColour(juce::Colour(0xffafc9dc));
-        g.drawText("CHORUS  →  DELAY STÉRÉO  →  RÉVERBÉRATION   •   Chaque effet possède son propre interrupteur.",
+        g.drawText(LIBERTY_UTF8(u8"CHORUS  →  DELAY STÉRÉO  →  RÉVERBÉRATION   •   Chaque effet possède son propre interrupteur."),
                    24, 48, 940, 22, juce::Justification::centredLeft);
 
-        static constexpr const char* names[] = { "CHORUS", "DELAY STÉRÉO", "RÉVERBÉRATION" };
+        const juce::String names[] = { "CHORUS", LIBERTY_UTF8(u8"DELAY STÉRÉO"), LIBERTY_UTF8(u8"RÉVERBÉRATION") };
         static constexpr int top[] = { 79, 227, 399 };
         static constexpr int height[] = { 137, 161, 146 };
         const auto blue = juce::Colour(0xff78c9fa);
@@ -629,29 +630,29 @@ public:
             g.drawText(names[section], 34, y + 8, 500, 26, juce::Justification::centredLeft);
             g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
             g.setColour(juce::Colour(0xffbfdced));
-            g.drawText("ÉTAT", 37, y + 44, 150, 16, juce::Justification::centred);
+            g.drawText(LIBERTY_UTF8(u8"ÉTAT"), 37, y + 44, 150, 16, juce::Justification::centred);
         }
 
         g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
         g.setColour(juce::Colour(0xffbfdced));
-        static constexpr const char* chorusLabels[] = { "VITESSE", "PROFONDEUR", "MÉLANGE" };
+        const juce::String chorusLabels[] = { "VITESSE", "PROFONDEUR", LIBERTY_UTF8(u8"MÉLANGE") };
         for (int i = 0; i < 3; ++i)
             g.drawText(chorusLabels[i], 222 + i * 165, 101, 120, 18, juce::Justification::centred);
 
-        static constexpr const char* delayLabels[] = { "TEMPS", "FEEDBACK", "MÉLANGE" };
+        const juce::String delayLabels[] = { "TEMPS", "FEEDBACK", LIBERTY_UTF8(u8"MÉLANGE") };
         for (int i = 0; i < 3; ++i)
             g.drawText(delayLabels[i], 205 + i * 142, 251, 110, 18, juce::Justification::centred);
         g.drawText("SYNC", 645, 254, 106, 16, juce::Justification::centred);
         g.drawText("DIVISION", 755, 254, 108, 16, juce::Justification::centred);
         g.drawText("MODE", 870, 254, 108, 16, juce::Justification::centred);
 
-        static constexpr const char* reverbLabels[] = { "TAILLE", "AMORTISSEMENT", "LARGEUR", "MÉLANGE" };
+        const juce::String reverbLabels[] = { "TAILLE", "AMORTISSEMENT", "LARGEUR", LIBERTY_UTF8(u8"MÉLANGE") };
         for (int i = 0; i < 4; ++i)
             g.drawText(reverbLabels[i], 220 + i * 180, 421, 140, 18, juce::Justification::centred);
 
         g.setColour(juce::Colour(0xff8baec5));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawText("Queues naturelles de delay/réverbération après les notes ; modulation via MATRICE MOD.",
+        g.drawText(LIBERTY_UTF8(u8"Queues naturelles de delay/réverbération après les notes ; modulation via MATRICE MOD."),
                    25, 547, 950, 18, juce::Justification::centredLeft);
     }
 
@@ -701,8 +702,8 @@ public:
             combos.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
                 synth.parameters, id, box));
         };
-        combo(enabled, "arpEnabled", { "DÉSACTIVÉ", "ACTIVÉ" });
-        combo(mode, "arpMode", { "MONTANT", "DESCENDANT", "ALLER / RETOUR", "ALÉATOIRE", "ACCORDS" });
+        combo(enabled, "arpEnabled", { LIBERTY_UTF8(u8"DÉSACTIVÉ"), LIBERTY_UTF8(u8"ACTIVÉ") });
+        combo(mode, "arpMode", { "MONTANT", "DESCENDANT", "ALLER / RETOUR", LIBERTY_UTF8(u8"ALÉATOIRE"), "ACCORDS" });
         combo(division, "arpDivision", { "1 MESURE", "1/2", "1/4", "1/8", "1/16", "1/32", "1/8 TRIOLET" });
         combo(octaves, "arpOctaves", { "1 OCTAVE", "2 OCTAVES", "3 OCTAVES", "4 OCTAVES" });
         for (int i = 0; i < 2; ++i) {
@@ -720,7 +721,7 @@ public:
             sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                 synth.parameters, i == 0 ? "arpSwing" : "arpGate", knob));
         }
-        swing.setTooltip("Décale un pas sur deux pour créer un rythme swing");
+        swing.setTooltip(LIBERTY_UTF8(u8"Décale un pas sur deux pour créer un rythme swing"));
         gate.setTooltip("Longueur des notes entre 5 % et 100 % de chaque pas");
         startTimerHz(15);
     }
@@ -729,10 +730,10 @@ public:
         g.fillAll(juce::Colour(0xff192b3a));
         g.setColour(juce::Colour(0xff78c9fa));
         g.setFont(juce::FontOptions(24.0f, juce::Font::bold));
-        g.drawText("ARPÉGIATEUR", 22, 14, 620, 38, juce::Justification::left);
+        g.drawText(LIBERTY_UTF8(u8"ARPÉGIATEUR"), 22, 14, 620, 38, juce::Justification::left);
         g.setFont(juce::FontOptions(12.0f));
         g.setColour(juce::Colour(0xffafc9dc));
-        g.drawText("Synchronisé au tempo du DAW  •  Notes MIDI maintenues  •  Jusqu'à 4 octaves",
+        g.drawText(LIBERTY_UTF8(u8"Synchronisé au tempo du DAW  •  Notes MIDI maintenues  •  Jusqu'à 4 octaves"),
                    22, 54, 720, 22, juce::Justification::left);
         g.setColour(juce::Colour(0xff223c4e));
         g.fillRoundedRectangle(16.0f, 90.0f, 748.0f, 211.0f, 7.0f);
@@ -750,12 +751,12 @@ public:
         g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
         const int note = synth.getArpNoteForDisplay();
         g.drawText(note >= 0 ? "NOTE : " + juce::MidiMessage::getMidiNoteName(note, true, true, 3)
-                             : "NOTE : —", 34, 224, 166, 32, juce::Justification::left);
+                             : LIBERTY_UTF8(u8"NOTE : —"), 34, 224, 166, 32, juce::Justification::left);
         g.setColour(juce::Colour(0xff9ebbd0));
         g.setFont(juce::FontOptions(12.0f));
-        g.drawText("Sans note enfoncée, l'arpégiateur reste silencieux. Désactiver restaure le MIDI normal.",
+        g.drawText(LIBERTY_UTF8(u8"Sans note enfoncée, l'arpégiateur reste silencieux. Désactiver restaure le MIDI normal."),
                    24, 317, 720, 22, juce::Justification::left);
-        g.drawText("Les réglages sont sauvegardés avec les presets et automatisables dans le DAW.",
+        g.drawText(LIBERTY_UTF8(u8"Les réglages sont sauvegardés avec les presets et automatisables dans le DAW."),
                    24, 342, 720, 20, juce::Justification::left);
     }
     void resized() override
@@ -780,7 +781,6 @@ private:
 namespace {
 constexpr int designW=1504, designH=1006;
 const juce::Colour panel(0xff273039), edge(0xff45535f), ink(0xffd4e5ef), muted(0xff9aafbf), cyan(0xff83cfff), well(0xff1b252e);
-juce::String utf(const char* s){ return juce::String::fromUTF8(s); }
 void text(juce::Graphics& g, const juce::String& s, juce::Rectangle<int> b, float size=14, juce::Colour colour=ink, bool bold=false, juce::Justification j=juce::Justification::centredLeft) {
     g.setColour(colour); g.setFont(juce::FontOptions(size,bold?juce::Font::bold:juce::Font::plain)); g.drawFittedText(s,b,j,1);
 }
@@ -849,7 +849,7 @@ public:
     }
 };
 const char* const algorithmNames[]={"Deep Ladder","Branch Ladder","Twin Stacks","Split Ladder","Radiant Fan","Crossfire","Three Pairs","Open Trio","Triple Branch","Open Quartet","Hybrid Tower","Twin Tines","Hybrid Fan","Hybrid Pairs","Spectral Ladder","AM Pairs","AM Cascade","AM Tower","AM Quartet","Six Suns"};
-const char* const categoryFR[]={"Tous les sons","Pianos électriques","Claviers et cloches","Basses","Leads","Nappes","Plucks et maillets","Cuivres et vents","Orgues et clavs","Effets sonores","FM-AM expérimental","Favoris","Mes presets"};
+const juce::String categoryFR[]={"Tous les sons",LIBERTY_UTF8(u8"Pianos électriques"),"Claviers et cloches","Basses","Leads","Nappes","Plucks et maillets","Cuivres et vents","Orgues et clavs","Effets sonores",LIBERTY_UTF8(u8"FM-AM expérimental"),"Favoris","Mes presets"};
 const char* const categoryEN[]={"All sounds","Electric Pianos","Acoustic and Bell Keys","Basses","Leads","Pads","Plucks and Mallets","Brass and Winds","Organs and Clavs","Sound Effects","Experimental FM-AM","Favourites","User presets"};
 }
 class FMEmancipationAudioProcessorEditor::Surface final:public juce::Component,private juce::Timer {
@@ -859,7 +859,7 @@ public:
         for(int i=0;i<5;++i){auto& b=tabs[(size_t)i]; configure(b);b.onClick=[this,i]{page=i;update();};b.setBounds(35+i*192,279,181,47);}
         configure(prev);configure(next);configure(star);configure(menu);configure(lang);
         prev.setBounds(483,214,34,30);next.setBounds(528,214,34,30);star.setBounds(438,214,34,30);menu.setBounds(573,214,35,30);
-        lang.setBounds(1452,10,39,23);prev.setButtonText(utf("‹"));next.setButtonText(utf("›"));menu.setButtonText("...");
+        lang.setBounds(1452,10,39,23);prev.setButtonText(LIBERTY_UTF8(u8"‹"));next.setButtonText(LIBERTY_UTF8(u8"›"));menu.setButtonText("...");
         prev.onClick=[this]{step(-1);};next.onClick=[this]{step(1);};star.onClick=[this]{toggleFavourite(synth.getCurrentProgram());};menu.onClick=[this]{advancedMenu();};
         lang.onClick=[this]{synth.english.store(!synth.english.load());localise();update();};
         for(int i=0;i<6;++i){
@@ -883,8 +883,8 @@ public:
         for(auto* b:{&algoPrev,&algoNext,&envPrev,&envNext,&catPrev,&catNext,&presetPrev,&presetNext})configure(*b);
         algoPrev.setBounds(55,721,34,30);algoNext.setBounds(91,721,34,30);envPrev.setBounds(1345,348,35,24);envNext.setBounds(1384,348,35,24);
         catPrev.setBounds(53,731,36,26);catNext.setBounds(94,731,36,26);presetPrev.setBounds(1078,738,36,25);presetNext.setBounds(1118,738,36,25);
-        for(auto* b:{&algoPrev,&envPrev,&catPrev,&presetPrev})b->setButtonText(utf("‹"));
-        for(auto* b:{&algoNext,&envNext,&catNext,&presetNext})b->setButtonText(utf("›"));
+        for(auto* b:{&algoPrev,&envPrev,&catPrev,&presetPrev})b->setButtonText(LIBERTY_UTF8(u8"‹"));
+        for(auto* b:{&algoNext,&envNext,&catNext,&presetNext})b->setButtonText(LIBERTY_UTF8(u8"›"));
         algoPrev.onClick=[this]{algoPage=0;repaint();};algoNext.onClick=[this]{algoPage=1;repaint();};
         envPrev.onClick=[this]{envPage=0;layoutEnvelopes();repaint();};envNext.onClick=[this]{envPage=1;layoutEnvelopes();repaint();};
         catPrev.onClick=[this]{catPage=juce::jmax(0,catPage-1);update();};catNext.onClick=[this]{catPage=juce::jmin(2,catPage+1);update();};
@@ -914,14 +914,14 @@ public:
         g.setColour(edge);g.drawRoundedRectangle(1,2,1502,1002,8,1);
         text(g,"FM",{35,28,66,50},38,juce::Colours::whitesmoke,true);
         text(g,"Emancipation",{95,28,355,50},38,cyan,true);
-        text(g,tr("SIX OPÉRATEURS · EXPRESSION INFINIE","SIX OPERATORS · INFINITE EXPRESSION"),{36,89,620,19},14,muted);
+        text(g,tr(LIBERTY_UTF8(u8"SIX OPÉRATEURS · EXPRESSION INFINIE"),LIBERTY_UTF8(u8"SIX OPERATORS · INFINITE EXPRESSION")),{36,89,620,19},14,muted);
         text(g,tr("ARCHITECTURE","ARCHITECTURE"),{948,40,138,18},13,muted,true);
         text(g,tr("ROUTAGE","ROUTING"),{1090,40,159,18},13,muted,true);
         g.setColour(juce::Colour(0xff87d2ba));g.fillEllipse(1265,44,10,10);
         text(g,tr("POLYPHONIQUE","POLYPHONIC"),{1282,40,167,18},13,muted,true);
-        text(g,"FM × AM",{948,66,138,24},18,ink,true);
+        text(g,LIBERTY_UTF8(u8"FM × AM"),{948,66,138,24},18,ink,true);
         text(g,tr("20 ALGORITHMES","20 ALGORITHMS"),{1090,66,170,24},17,ink,true);
-        text(g,tr("INSTRUMENT NUMÉRIQUE","DIGITAL INSTRUMENT"),{1265,66,218,24},17,ink,true);
+        text(g,tr(LIBERTY_UTF8(u8"INSTRUMENT NUMÉRIQUE"),"DIGITAL INSTRUMENT"),{1265,66,218,24},17,ink,true);
         drawLCD(g);
         text(g,tr("MOTEUR FM / AM","FM / AM ENGINE"),{1300,288,168,24},13,muted,false,juce::Justification::centredRight);
         frame(g,{36,342,1432,424});
@@ -931,17 +931,17 @@ public:
         if(page==3)drawEffects(g);
         if(page==4)drawPresets(g);
         drawMaster(g);
-        text(g,tr("FM EMANCIPATION / SYNTHÉTISEUR FM–AM À SIX OPÉRATEURS","FM EMANCIPATION / SIX-OPERATOR FM–AM SYNTHESIZER"),{36,947,840,22},11,muted,true);
-        text(g,tr("MIDI HÔTE · AUTOMATION · MÉMORISATION","HOST MIDI · AUTOMATION · STATE RECALL"),{900,947,568,22},11,muted,true,juce::Justification::centredRight);
+        text(g,tr(LIBERTY_UTF8(u8"FM EMANCIPATION / SYNTHÉTISEUR FM–AM À SIX OPÉRATEURS"),LIBERTY_UTF8(u8"FM EMANCIPATION / SIX-OPERATOR FM–AM SYNTHESIZER")),{36,947,840,22},11,muted,true);
+        text(g,tr(LIBERTY_UTF8(u8"MIDI HÔTE · AUTOMATION · MÉMORISATION"),LIBERTY_UTF8(u8"HOST MIDI · AUTOMATION · STATE RECALL")),{900,947,568,22},11,muted,true,juce::Justification::centredRight);
     }
     void mouseDown(const juce::MouseEvent& e) override{
         if(!e.mods.isPopupMenu())return;
         auto* c=e.eventComponent;while(c&&c!=this&&c->getComponentID().isEmpty())c=c->getParentComponent();
         if(!c||c==this)return;const auto id=c->getComponentID();if(!synth.parameters.getParameter(id))return;
         juce::PopupMenu m;m.addItem(1,tr("Apprendre MIDI CC","MIDI Learn"));const int cc=synth.midiBinding(id);
-        m.addItem(2,tr("Supprimer l’affectation","Remove mapping"),cc>=0);
+        m.addItem(2,tr(LIBERTY_UTF8(u8"Supprimer l’affectation"),"Remove mapping"),cc>=0);
         if(cc>=0)m.addItem(3,"CC "+juce::String(cc%128)+" / CH "+juce::String(cc/128+1),false);
-        m.addItem(4,tr("Annuler l’apprentissage","Cancel learn"));
+        m.addItem(4,tr(LIBERTY_UTF8(u8"Annuler l’apprentissage"),"Cancel learn"));
         auto safe=juce::Component::SafePointer<Surface>(this);
         m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(c),[safe,id](int r){if(safe==nullptr)return;if(r==1)safe->synth.armMidiLearn(id);if(r==2)safe->synth.clearMidiLearn(id);if(r==4)safe->synth.armMidiLearn({});safe->repaint();});
     }
@@ -969,8 +969,8 @@ private:
     std::vector<Entry> entries;
     std::vector<std::unique_ptr<SA>> sliders;
     std::vector<std::unique_ptr<CA>> combos;
-    juce::String tr(const char* fr,const char* en)const{return utf(synth.english.load()?en:fr);}
-    juce::String cat(int i)const{return utf((synth.english.load()?categoryEN:categoryFR)[juce::jlimit(0,12,i)]);}
+    juce::String tr(const juce::String& fr,const juce::String& en)const{return synth.english.load()?en:fr;}
+    juce::String cat(int i)const{const auto index=juce::jlimit(0,12,i);return synth.english.load()?juce::String(categoryEN[index]):categoryFR[index];}
     float value(const juce::String& id)const{if(auto* p=synth.parameters.getRawParameterValue(id))return p->load();return 0;}
     void setParam(const juce::String& id,float v){if(auto* p=synth.parameters.getParameter(id)){p->beginChangeGesture();p->setValueNotifyingHost(p->convertTo0to1(v));p->endChangeGesture();}}
     int algorithm()const{return juce::jlimit(0,19,(int)std::lround(value("algorithm"))-1);}
@@ -986,14 +986,14 @@ private:
     }
     void setupCombo(juce::ComboBox& box,const juce::String& id,const juce::StringArray& names){box.setComponentID(id);box.addItemList(names,1);addAndMakeVisible(box);combos.push_back(std::make_unique<CA>(synth.parameters,id,box));}
     void localise(){
-        const char* fr[]={"01  OPÉRATEURS","02  ALGORITHME","03  ENVELOPPES","04  EFFETS","05  PRESETS"};
+        const juce::String fr[]={LIBERTY_UTF8(u8"01  OPÉRATEURS"),"02  ALGORITHME","03  ENVELOPPES","04  EFFETS","05  PRESETS"};
         const char* en[]={"01  OPERATORS","02  ALGORITHM","03  ENVELOPES","04  EFFECTS","05  PRESETS"};
         for(int i=0;i<5;++i)tabs[(size_t)i].setButtonText(tr(fr[i],en[i]));
         lang.setButtonText(synth.english.load()?"EN":"FR");lang.setTooltip(tr("Changer de langue","Change language"));
-        star.setTooltip(tr("Favori","Favourite"));menu.setTooltip(tr("Fonctions avancées","Advanced functions"));
-        for(auto& w:waves){for(int i=0;i<4;++i){const char* a[]={"Sinus","Triangle","Scie","Carrée"};const char* b[]={"Sine","Triangle","Saw","Square"};w.changeItemText(i+1,tr(a[i],b[i]));}}
-        search.setTextToShowWhenEmpty(tr("Rechercher des programmes…","Search programs…"),muted);
-        name.setTextToShowWhenEmpty(tr("Nom de votre son…","Name your sound…"),muted);
+        star.setTooltip(tr("Favori","Favourite"));menu.setTooltip(tr(LIBERTY_UTF8(u8"Fonctions avancées"),"Advanced functions"));
+        for(auto& w:waves){for(int i=0;i<4;++i){const juce::String a[]={"Sinus","Triangle","Scie",LIBERTY_UTF8(u8"Carrée")};const char* b[]={"Sine","Triangle","Saw","Square"};w.changeItemText(i+1,tr(a[i],b[i]));}}
+        search.setTextToShowWhenEmpty(tr(LIBERTY_UTF8(u8"Rechercher des programmes…"),LIBERTY_UTF8(u8"Search programs…")),muted);
+        name.setTextToShowWhenEmpty(tr(LIBERTY_UTF8(u8"Nom de votre son…"),LIBERTY_UTF8(u8"Name your sound…")),muted);
         save.setButtonText(tr("ENREGISTRER SOUS","SAVE CURRENT AS"));rename.setButtonText(tr("RENOMMER LE PRESET","RENAME USER PRESET"));remove.setButtonText(tr("SUPPRIMER LE PRESET","DELETE USER PRESET"));
     }
     void layoutEnvelopes(){
@@ -1014,9 +1014,9 @@ private:
     }
     void timerCallback()override{
         const int program=synth.getCurrentProgram();if(program!=lastProgram){if(lastProgram>=0){selectedUser=juce::File();userTitle.clear();}lastProgram=program;}
-        star.setButtonText(synth.favourites[(size_t)juce::jlimit(0,99,program)].load()?utf("★"):utf("☆"));
+        star.setButtonText(synth.favourites[(size_t)juce::jlimit(0,99,program)].load()?LIBERTY_UTF8(u8"★"):LIBERTY_UTF8(u8"☆"));
         const char* ids[]={"fxChorusEnabled","fxDelayEnabled","fxReverbEnabled"};
-        for(int i=0;i<3;++i){const bool on=value(ids[i])>=0.5f;auto& b=fxOn[(size_t)i];b.setButtonText(on?utf("● ON"):"OFF");b.setColour(juce::TextButton::textColourOffId,on?juce::Colour(0xff9ddcc6):muted);}
+        for(int i=0;i<3;++i){const bool on=value(ids[i])>=0.5f;auto& b=fxOn[(size_t)i];b.setButtonText(on?LIBERTY_UTF8(u8"● ON"):"OFF");b.setColour(juce::TextButton::textColourOffId,on?juce::Colour(0xff9ddcc6):muted);}
         repaint();
     }
     void step(int dir){selectedUser=juce::File();userTitle.clear();synth.setCurrentProgram((synth.getCurrentProgram()+100+dir)%100);lastProgram=synth.getCurrentProgram();refresh();update();}
@@ -1042,10 +1042,10 @@ private:
         const auto n=juce::File::createLegalFileName(name.getText().trim());if(n.isEmpty()){notice(tr("Saisissez un nom.","Enter a name."));return;}
         if(!folder().createDirectory()){notice(tr("Dossier inaccessible.","Cannot create folder."));return;}
         auto target=(renaming?selectedUser.getParentDirectory():folder()).getChildFile(n+".fme");
-        if(target.exists()){notice(tr("Ce nom existe déjà.","This name already exists."));return;}
+        if(target.exists()){notice(tr(LIBERTY_UTF8(u8"Ce nom existe déjà."),"This name already exists."));return;}
         bool ok=false;if(renaming){if(selectedUser.existsAsFile())ok=selectedUser.moveFileTo(target);}
         else{juce::MemoryBlock b;synth.getStateInformation(b);ok=target.replaceWithData(b.getData(),b.getSize());}
-        if(!ok){notice(tr("Impossible d’enregistrer.","Could not save."));return;}selectedUser=target;userTitle=n;refresh();update();
+        if(!ok){notice(tr(LIBERTY_UTF8(u8"Impossible d’enregistrer."),"Could not save."));return;}selectedUser=target;userTitle=n;refresh();update();
     }
     void deleteUser(){
         if(!selectedUser.existsAsFile())return;auto f=selectedUser;auto safe=juce::Component::SafePointer<Surface>(this);
@@ -1053,8 +1053,8 @@ private:
             juce::ModalCallbackFunction::create([safe,f](int r){if(safe!=nullptr&&r!=0){if(f.moveToTrash()){safe->selectedUser=juce::File();safe->userTitle.clear();safe->name.clear();safe->refresh();safe->update();}else safe->notice(safe->tr("Suppression impossible.","Could not delete."));}}));
     }
     void advancedMenu(){
-        juce::PopupMenu m;m.addItem(1,tr("Arpégiateur MIDI","MIDI arpeggiator"));m.addItem(2,tr("Filtre multimode","Multimode filter"));m.addItem(3,tr("Enveloppes de modulation","Modulation envelopes"));
-        m.addItem(4,tr("Matrice LFO 1","LFO 1 matrix"));m.addItem(5,tr("Matrice LFO 2","LFO 2 matrix"));m.addItem(6,tr("Phase / mode LFO","LFO phase / mode"));m.addItem(7,tr("Effets avancés","Advanced effects"));m.addItem(8,tr("Réglages des deux LFO","Dual LFO settings"));m.addSeparator();m.addItem(9,tr("English","Français"));
+        juce::PopupMenu m;m.addItem(1,tr(LIBERTY_UTF8(u8"Arpégiateur MIDI"),"MIDI arpeggiator"));m.addItem(2,tr("Filtre multimode","Multimode filter"));m.addItem(3,tr("Enveloppes de modulation","Modulation envelopes"));
+        m.addItem(4,tr("Matrice LFO 1","LFO 1 matrix"));m.addItem(5,tr("Matrice LFO 2","LFO 2 matrix"));m.addItem(6,tr("Phase / mode LFO","LFO phase / mode"));m.addItem(7,tr(LIBERTY_UTF8(u8"Effets avancés"),"Advanced effects"));m.addItem(8,tr(LIBERTY_UTF8(u8"Réglages des deux LFO"),"Dual LFO settings"));m.addSeparator();m.addItem(9,tr("English",LIBERTY_UTF8(u8"Français")));
         auto safe=juce::Component::SafePointer<Surface>(this);
         m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&menu),[safe](int r){if(safe==nullptr||r==0)return;if(r==9){safe->synth.english.store(!safe->synth.english.load());safe->localise();safe->update();return;}
             std::unique_ptr<juce::Component> c;auto& p=safe->synth;
@@ -1068,7 +1068,7 @@ private:
         explicit LfoPanel(FMEmancipationAudioProcessor& p){
             setSize(680,300);
             const char* suffix[]={"Wave","Sync","Division","Target"};
-            const juce::StringArray options[]={{"Sinus","Triangle","Scie",utf("Carrée")},{"Libre","Tempo"},{"1/1","1/2","1/4","1/8","1/16","1/8.","1/8T"},{utf("Désactivé"),"Vibrato",utf("Trémolo"),"FM","AM","Matrice"}};
+            const juce::StringArray options[]={{"Sinus","Triangle","Scie",LIBERTY_UTF8(u8"Carrée")},{"Libre","Tempo"},{"1/1","1/2","1/4","1/8","1/16","1/8.","1/8T"},{LIBERTY_UTF8(u8"Désactivé"),"Vibrato",LIBERTY_UTF8(u8"Trémolo"),"FM","AM","Matrice"}};
             for(int n=0;n<2;++n){const juce::String prefix=n==0?"lfo":"lfo2";for(int k=0;k<4;++k){auto& b=boxes[(size_t)(n*4+k)];b.addItemList(options[k],1);b.setBounds(115+k*137,55+n*145,125,30);addAndMakeVisible(b);ca.push_back(std::make_unique<CA>(p.parameters,prefix+suffix[k],b));}
                 for(int k=0;k<2;++k){auto& s=knobs[(size_t)(n*2+k)];s.setSliderStyle(juce::Slider::LinearHorizontal);s.setTextBoxStyle(juce::Slider::TextBoxRight,false,60,22);s.setBounds(115+k*260,105+n*145,245,30);addAndMakeVisible(s);sa.push_back(std::make_unique<SA>(p.parameters,prefix+(k==0?"Rate":"Depth"),s));}}
         }
@@ -1094,18 +1094,18 @@ private:
         auto lcd=juce::Rectangle<float>(36,117,1430,145);frame(g,lcd,juce::Colour(0xff0f1f2a),juce::Colour(0xff33586f),5);
         auto inner=lcd.reduced(4);g.setGradientFill(juce::ColourGradient(juce::Colour(0xff174b70),inner.getX(),inner.getY(),juce::Colour(0xff103247),inner.getRight(),inner.getBottom(),false));g.fillRoundedRectangle(inner,2);
         g.setColour(juce::Colour(0xff4d93bc).withAlpha(0.25f));g.drawVerticalLine(631,120,259);g.drawVerticalLine(994,120,259);
-        text(g,tr("MÉMOIRE PROGRAMME","PROGRAM MEMORY"),{61,135,390,25},13,juce::Colour(0xff9bc8e6),true);
-        text(g,tr("ÉDITION","EDIT"),{530,135,78,25},13,juce::Colour(0xff9bc8e6),true,juce::Justification::centredRight);
+        text(g,tr(LIBERTY_UTF8(u8"MÉMOIRE PROGRAMME"),"PROGRAM MEMORY"),{61,135,390,25},13,juce::Colour(0xff9bc8e6),true);
+        text(g,tr(LIBERTY_UTF8(u8"ÉDITION"),"EDIT"),{530,135,78,25},13,juce::Colour(0xff9bc8e6),true,juce::Justification::centredRight);
         auto n=userTitle.isEmpty()?synth.getProgramName(synth.getCurrentProgram()):userTitle;
         text(g,n,{61,166,550,38},28,juce::Colour(0xffbce8fb),true);
-        text(g,synth.midiLearnTarget()>=0?tr("MIDI Learn : bougez un contrôleur","MIDI Learn: move a controller"):userTitle.isEmpty()?cat(synth.getCurrentProgram()/10+1):tr("Programme utilisateur","User program"),{61,215,365,26},14,juce::Colour(0xff9bc8e6));
+        text(g,synth.midiLearnTarget()>=0?tr(LIBERTY_UTF8(u8"MIDI Learn : bougez un contrôleur"),"MIDI Learn: move a controller"):userTitle.isEmpty()?cat(synth.getCurrentProgram()/10+1):tr("Programme utilisateur","User program"),{61,215,365,26},14,juce::Colour(0xff9bc8e6));
         const int a=algorithm();text(g,tr("ALGORITHME","ALGORITHM"),{648,141,210,23},15,ink,true);text(g,juce::String(a+1).paddedLeft('0',2),{648,165,160,36},29,ink,true);text(g,algorithmNames[a],{648,201,210,21},13,muted,true);
         text(g,tr("ROUTAGE FM / AM","FM / AM ROUTING"),{648,222,210,18},12,muted,true);diagram(g,{855,147,120,90},a,false);
-        text(g,tr("NIVEAUX DES OPÉRATEURS","OPERATOR OUTPUT LEVELS"),{1013,128,422,18},13,juce::Colour(0xff9bc8e6),true);
+        text(g,tr(LIBERTY_UTF8(u8"NIVEAUX DES OPÉRATEURS"),"OPERATOR OUTPUT LEVELS"),{1013,128,422,18},13,juce::Colour(0xff9bc8e6),true);
         for(int i=0;i<6;++i){text(g,juce::String(i+1),{1031+i*69,143,52,18},12,ink,true,juce::Justification::centred);text(g,juce::String(juce::roundToInt(level[(size_t)i].getValue()*100)),{1031+i*69,239,52,18},12,ink,true,juce::Justification::centred);}
     }
     void drawOperators(juce::Graphics& g){
-        const char* fr[]={"Rapport de fréquence","Accord fin","Forme d’onde","Feedback local","Réponse vélocité","Suivi clavier"};
+        const juce::String fr[]={LIBERTY_UTF8(u8"Rapport de fréquence"),"Accord fin",LIBERTY_UTF8(u8"Forme d’onde"),"Feedback local",LIBERTY_UTF8(u8"Réponse vélocité"),"Suivi clavier"};
         const char* en[]={"Frequency ratio","Fine tune","Waveform","Local feedback","Velocity response","Key level tracking"};
         const int y[]={408,459,510,589,640,691};const int slIndex[]={0,1,-1,2,3,4};const int a=algorithm();
         for(int i=0;i<6;++i){const int x=36+i*238; if(i) {g.setColour(edge);g.drawVerticalLine(x,343,766);}
@@ -1113,7 +1113,7 @@ private:
             int t=FMEmancipationAudioProcessor::routeType(a,i);auto badge=juce::Rectangle<float>((float)x+158,364,68,26);frame(g,badge,well,t==0?juce::Colour(0xff557f9a):edge,2);
             text(g,t==0?tr("PORTEUR","CARRIER"):t==1?"FM MOD":t==2?"AM MOD":"FM+AM",badge.toNearestInt(),10,t==0?cyan:muted,true,juce::Justification::centred);
             for(int k=0;k<6;++k){text(g,tr(fr[k],en[k]),{x+17,y[k],150,24},13,muted);
-                if(slIndex[k]>=0){auto v=ops[(size_t)(i*5+slIndex[k])].getValue();auto s=juce::String(v,k==0?2:k==1?1:3);if(k==0)s+=" ×";if(k==1)s+=" ct";text(g,s,{x+159,y[k],62,24},12,ink,true,juce::Justification::centredRight);}}
+                if(slIndex[k]>=0){auto v=ops[(size_t)(i*5+slIndex[k])].getValue();auto s=juce::String(v,k==0?2:k==1?1:3);if(k==0)s+=LIBERTY_UTF8(u8" ×");if(k==1)s+=" ct";text(g,s,{x+159,y[k],62,24},12,ink,true,juce::Justification::centredRight);}}
         }
     }
     void drawAlgorithms(juce::Graphics& g){
@@ -1121,15 +1121,15 @@ private:
         for(int i=0;i<10;++i){int idx=algoPage*10+i;auto r=algoHits[(size_t)i].getBounds().toFloat();frame(g,r,idx==a?juce::Colour(0xff234256):juce::Colour(0xff202a33),idx==a?cyan:edge,3);
             text(g,juce::String(idx+1).paddedLeft('0',2),{(int)r.getX()+8,(int)r.getY()+8,36,17},12,muted,true);
             diagram(g,{r.getX()+38,r.getY()+8,89,46},idx,false);text(g,algorithmNames[idx],{(int)r.getX()+5,(int)r.getY()+56,155,22},12,ink,false,juce::Justification::centred);}
-        text(g,algoPage==0?"01 – 10":"11 – 20",{135,721,180,30},13,muted);
+        text(g,algoPage==0?LIBERTY_UTF8(u8"01 – 10"):LIBERTY_UTF8(u8"11 – 20"),{135,721,180,30},13,muted);
         text(g,juce::String(a+1).paddedLeft('0',2)+" / "+algorithmNames[a],{962,360,474,36},23,ink,true);
         int carriers=0;for(int i=0;i<6;++i)if(FMEmancipationAudioProcessor::routes[a][i]<0)++carriers;
-        text(g,juce::String(carriers)+tr(" porteurs · "," carriers · ")+juce::String(6-carriers)+tr(" routes"," modulation routes"),{962,401,470,20},14,muted);
-        text(g,tr("Les porteurs alimentent la sortie stéréo.","Highlighted operators feed the stereo output."),{962,422,470,20},13,muted);
+        text(g,juce::String(carriers)+tr(LIBERTY_UTF8(u8" porteurs · "),LIBERTY_UTF8(u8" carriers · "))+juce::String(6-carriers)+tr(" routes"," modulation routes"),{962,401,470,20},14,muted);
+        text(g,tr(LIBERTY_UTF8(u8"Les porteurs alimentent la sortie stéréo."),"Highlighted operators feed the stereo output."),{962,422,470,20},13,muted);
         diagram(g,{1000,451,411,245},a,true);
         const juce::Colour colours[]={cyan,juce::Colour(0xffe8bc80),juce::Colour(0xffc49be9)};const char* labels[]={"FM","AM","FM+AM"};
         for(int i=0;i<3;++i){g.setColour(colours[i]);g.fillRect(962+i*61,708,16,3);text(g,labels[i],{982+i*61,698,52,22},12,muted,true);}
-        text(g,tr("Feedback local par opérateur ; contrôle global commun.","Each operator has local feedback; global Feedback scales all six."),{962,731,485,26},13,muted);
+        text(g,tr(LIBERTY_UTF8(u8"Feedback local par opérateur ; contrôle global commun."),"Each operator has local feedback; global Feedback scales all six."),{962,731,485,26},13,muted);
     }
     void envelopeGraph(juce::Graphics& g,juce::Rectangle<float> b,double a,double d,double s,double r){
         g.setColour(juce::Colour(0xff34434e));for(int i=0;i<3;++i)g.drawHorizontalLine((int)(b.getY()+i*b.getHeight()/2),b.getX(),b.getRight());
@@ -1139,21 +1139,21 @@ private:
     }
     void drawEnvelopes(juce::Graphics& g){
         for(int x:{513,831,1149}){g.setColour(edge);g.drawVerticalLine(x,343,766);}
-        const char* fr[]={"Attaque","Déclin","Maintien","Relâchement","Hauteur (st)"};const char* en[]={"Attack","Decay","Sustain","Release","Pitch amount"};
+        const juce::String fr[]={"Attaque",LIBERTY_UTF8(u8"Déclin"),"Maintien",LIBERTY_UTF8(u8"Relâchement"),"Hauteur (st)"};const char* en[]={"Attack","Decay","Sustain","Release","Pitch amount"};
         for(int n=0;n<2;++n){int x=n==0?58:284;int off=n*4;text(g,n==0?"AMPLITUDE":tr("HAUTEUR","PITCH"),{x,359,215,27},15,ink,true);
             envelopeGraph(g,{(float)x+9,400,187,46},globalEnv[(size_t)off].getValue(),globalEnv[(size_t)off+1].getValue(),globalEnv[(size_t)off+2].getValue(),globalEnv[(size_t)off+3].getValue());
             for(int k=0;k<(n==0?4:5);++k){int i=off+k;int yy=470+k*37;text(g,tr(fr[k],en[k]),{x,yy,130,20},13,muted);text(g,juce::String(globalEnv[(size_t)i].getValue(),k==2?3:3)+(k==2?"":k==4?" st":" s"),{x+130,yy,76,20},12,ink,true,juce::Justification::centredRight);}}
-        for(int j=0;j<3;++j){int op=envPage*3+j,x=531+j*318; text(g,tr("OPÉRATEUR ","OPERATOR ")+juce::String(op+1),{x,354,190,27},13,ink,true);if(j<2)text(g,"ADSR",{x+240,354,42,27},13,muted,true);
+        for(int j=0;j<3;++j){int op=envPage*3+j,x=531+j*318; text(g,tr(LIBERTY_UTF8(u8"OPÉRATEUR "),"OPERATOR ")+juce::String(op+1),{x,354,190,27},13,ink,true);if(j<2)text(g,"ADSR",{x+240,354,42,27},13,muted,true);
             int k0=op*4;envelopeGraph(g,{(float)x+77,385,126,32},opEnv[(size_t)k0].getValue(),opEnv[(size_t)k0+1].getValue(),opEnv[(size_t)k0+2].getValue(),opEnv[(size_t)k0+3].getValue());
             for(int k=0;k<4;++k){int xx=x+(k%2)*150,yy=430+(k/2)*46;text(g,tr(fr[k],en[k]),{xx,yy,75,18},11,muted);text(g,juce::String(opEnv[(size_t)(k0+k)].getValue(),3)+(k==2?"":" s"),{xx+75,yy,60,18},11,ink,true,juce::Justification::centredRight);}}
     }
     void drawEffects(juce::Graphics& g){
         for(int x:{513,990}){g.setColour(edge);g.drawVerticalLine(x,343,766);}
         const char* titles[]={"CHORUS","DELAY","REVERB"};
-        const char* fr[]={"Mouvement stéréo · voix déphasées","Écho stéréo · temps modulable","Réverbération diffuse · espace et profondeur"};
-        const char* en[]={"Stereo motion · phase-offset voices","Stereo echo · smooth time modulation","Diffused reverb · space and controlled tails"};
+        const juce::String fr[]={LIBERTY_UTF8(u8"Mouvement stéréo · voix déphasées"),LIBERTY_UTF8(u8"Écho stéréo · temps modulable"),LIBERTY_UTF8(u8"Réverbération diffuse · espace et profondeur")};
+        const juce::String en[]={LIBERTY_UTF8(u8"Stereo motion · phase-offset voices"),LIBERTY_UTF8(u8"Stereo echo · smooth time modulation"),LIBERTY_UTF8(u8"Diffused reverb · space and controlled tails")};
         for(int i=0;i<3;++i){text(g,titles[i],{68+i*477,367,320,29},21,ink);text(g,tr(fr[i],en[i]),{68+i*477,410,400,29},14,muted);}
-        const char* f[]={"Mix","Vitesse","Profondeur","Mix","Temps","Feedback","Mix","Déclin","Taille","Amortissement"};
+        const juce::String f[]={"Mix","Vitesse","Profondeur","Mix","Temps","Feedback","Mix",LIBERTY_UTF8(u8"Déclin"),"Taille","Amortissement"};
         const char* e[]={"Mix","Rate","Depth","Mix","Time","Feedback","Mix","Decay","Size","Damping"};
         const int xs[]={166,382,166,645,860,645,1123,1340,1123,1340};
         for(int i=0;i<10;++i)text(g,tr(f[i],e[i]),{xs[i]-80,(i==2||i==5||i>=8)?625:478,160,25},14,muted,false,juce::Justification::centred);
@@ -1164,11 +1164,11 @@ private:
             text(g,cat(c),{63,(int)r.getY()+9,199,23},13,ink);if(c<=10)text(g,c==0?"100":"10",{267,(int)r.getY()+9,21,23},11,muted,false,juce::Justification::centredRight);}
         for(int i=0;i<12;++i){const int k=presetPage*12+i;if(k>=(int)entries.size())break;const auto& e=entries[(size_t)k];auto b=presetHits[(size_t)i].getBounds();auto r=b.withWidth(413).toFloat();bool active=e.factory>=0?userTitle.isEmpty()&&e.factory==synth.getCurrentProgram():e.file==selectedUser;
             frame(g,r,active?juce::Colour(0xff294557):juce::Colour(0xff202d37),active?cyan:edge,2);text(g,e.label,{b.getX()+12,b.getY()+4,355,22},14,ink);text(g,e.factory>=0?cat(e.factory/10+1):cat(12),{b.getX()+12,b.getY()+25,355,18},11,muted);
-            if(e.factory>=0){bool f=synth.favourites[(size_t)e.factory].load();text(g,f?utf("★"):utf("☆"),{b.getRight(),b.getY(),35,50},24,f?juce::Colour(0xffeac477):muted,false,juce::Justification::centred);}}
-        text(g,tr("VOTRE BIBLIOTHÈQUE","YOUR SOUND LIBRARY"),{1223,364,228,27},15,ink,true);
-        text(g,tr("Les sons d’usine sont protégés.","Factory programs are read-only."),{1223,631,230,24},13,muted);
+            if(e.factory>=0){bool f=synth.favourites[(size_t)e.factory].load();text(g,f?LIBERTY_UTF8(u8"★"):LIBERTY_UTF8(u8"☆"),{b.getRight(),b.getY(),35,50},24,f?juce::Colour(0xffeac477):muted,false,juce::Justification::centred);}}
+        text(g,tr(LIBERTY_UTF8(u8"VOTRE BIBLIOTHÈQUE"),"YOUR SOUND LIBRARY"),{1223,364,228,27},15,ink,true);
+        text(g,tr(LIBERTY_UTF8(u8"Les sons d’usine sont protégés."),"Factory programs are read-only."),{1223,631,230,24},13,muted);
         text(g,tr("Enregistrez vos sons personnels.","Save an edited sound to make it your own."),{1223,654,230,30},13,muted);
-        text(g,tr("★ Favoris des programmes d’usine","★ Factory program favourites"),{1223,699,230,26},12,muted);
+        text(g,tr(LIBERTY_UTF8(u8"★ Favoris des programmes d’usine"),LIBERTY_UTF8(u8"★ Factory program favourites")),{1223,699,230,26},12,muted);
         text(g,juce::String(presetPage+1)+" / "+juce::String(juce::jmax(1,((int)entries.size()+11)/12)),{1160,739,36,22},11,muted);
     }
     void drawMaster(juce::Graphics& g){
@@ -1177,8 +1177,8 @@ private:
         text(g,tr("MOTEUR DE MODULATION","MODULATION ENGINE"),{53,792,430,23},13,muted,true);
         text(g,tr("JEU & MOUVEMENT","PERFORMANCE & MOTION"),{508,792,490,23},13,muted,true);
         text(g,tr("SORTIE MASTER","MASTER OUTPUT"),{1029,792,421,23},13,muted,true);
-        const char* fr[]={"Profondeur FM","Profondeur AM","Quantité","Feedback","Vélocité","Suivi clavier","LFO Hz","Vibrato ct","Trémolo","LFO → mod","Transpose","Accord ct","Volume dB","Pan","Largeur"};
-        const char* en[]={"FM depth","AM depth","Amount","Feedback","Velocity","Key track","LFO Hz","Vibrato ct","Tremolo","LFO → mod","Transpose","Tune ct","Volume dB","Pan","Width"};
+        const juce::String fr[]={"Profondeur FM","Profondeur AM",LIBERTY_UTF8(u8"Quantité"),"Feedback",LIBERTY_UTF8(u8"Vélocité"),"Suivi clavier","LFO Hz","Vibrato ct",LIBERTY_UTF8(u8"Trémolo"),LIBERTY_UTF8(u8"LFO → mod"),"Transpose","Accord ct","Volume dB","Pan","Largeur"};
+        const juce::String en[]={"FM depth","AM depth","Amount","Feedback","Velocity","Key track","LFO Hz","Vibrato ct","Tremolo",LIBERTY_UTF8(u8"LFO → mod"),"Transpose","Tune ct","Volume dB","Pan","Width"};
         const int xs[]={102,210,317,424,543,625,707,789,871,953,1068,1154,1240,1326,1412};
         for(int i=0;i<15;++i)text(g,tr(fr[i],en[i]),{xs[i]-43,816,86,22},13,muted,false,juce::Justification::centred);
     }
