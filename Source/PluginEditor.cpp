@@ -693,8 +693,8 @@ public:
         auto combo = [&](juce::ComboBox& box, const juce::String& id,
                          const juce::StringArray& values) {
             box.addItemList(values, 1);
-            box.setComponentID(parameterID);
-        box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+            box.setComponentID(id);
+            box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
             box.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
             box.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
             addAndMakeVisible(box);
@@ -707,6 +707,7 @@ public:
         combo(octaves, "arpOctaves", { "1 OCTAVE", "2 OCTAVES", "3 OCTAVES", "4 OCTAVES" });
         for (int i = 0; i < 2; ++i) {
             auto& knob = i == 0 ? swing : gate;
+            knob.setComponentID(i == 0 ? "arpSwing" : "arpGate");
             knob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
             knob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 78, 20);
             knob.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff70d6f5));
@@ -798,6 +799,7 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     add(lfo2Rate, "lfo2Rate", false);
     add(lfo2Depth, "lfo2Depth", false);
     auto addLfoCombo = [&](juce::ComboBox& box, const juce::String& parameterID) {
+        box.setComponentID(parameterID);
         box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
         box.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
         box.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
