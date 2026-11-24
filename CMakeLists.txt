@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(FMEmancipation VERSION 0.2.0 LANGUAGES C CXX)
+project(FMEmancipation VERSION 0.3.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
@@ -22,3 +22,7 @@ target_sources(FMEmancipation PRIVATE Source/PluginProcessor.cpp Source/PluginEd
 target_compile_definitions(FMEmancipation PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(FMEmancipation PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 juce_generate_juce_header(FMEmancipation)
+
+if(MSVC)
+  target_compile_options(FMEmancipation PRIVATE /utf-8)
+endif()

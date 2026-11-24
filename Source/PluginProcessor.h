@@ -76,7 +76,8 @@ private:
         std::array<int, 2> modulationStage {}; // 0=A 1=D 2=S 3=R 4=finished
         double operatorEnvelope[6] {};
         int operatorStage[6] {};
-        double envelope = 0.0;
+        double envelope = 0.0, ampReleaseStart = 0.0, pitchEnvelope = 0.0, pitchReleaseStart = 0.0;
+        int ampStage = 0, pitchStage = 0;
         double velocity = 0.0;
         bool releasing = false;
     };

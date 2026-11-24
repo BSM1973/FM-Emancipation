@@ -18,6 +18,15 @@ FilterSignals processSvf(double input, double g, double k,
     return { v2, high, k * v1, high + v2 };
 }
 
+double advanceAdsr(double& value, int& stage, double& releaseStart, bool released, double a, double d, double s, double r, double rate) noexcept {
+    if (released && stage < 3) { stage = 3; releaseStart = value; }
+    if (stage == 0) { value = juce::jmin(1.0, value + 1.0/(rate*a)); if(value>=1.0)stage=1; }
+    else if(stage==1){value=juce::jmax(s,value-(1.0-s)/(rate*d));if(value<=s)stage=2;}
+    else if(stage==2)value=s;
+    else if(stage==3){value=juce::jmax(0.0,value-releaseStart/(rate*r));if(value<=1.0e-10){value=0;stage=4;}}
+    else value=0;
+    return value;
+}
 double evaluateLfo(double phase, int shape) noexcept
 {
     const double fraction = (phase - twoPi * std::floor(phase / twoPi)) / twoPi;
@@ -148,6 +157,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
         f("lfo2OpFM" + op, "OP " + juce::String(i + 1) + " LFO 2 FM", -1.0f, 1.0f, 0.0f);
         f("lfo2OpFeedback" + op, "OP " + juce::String(i + 1) + " LFO 2 feedback", -1.0f, 1.0f, 0.0f);
     }
+    f("ampDecay", "Amplitude decay", 0.001f, 8.0f, 1.0f);
+    f("ampSustain", "Amplitude sustain", 0.0f, 1.0f, 1.0f);
+    f("pitchAttack", "Pitch attack", 0.001f, 5.0f, 0.001f);
+    f("pitchDecay", "Pitch decay", 0.001f, 8.0f, 0.2f);
+    f("pitchSustain", "Pitch sustain", 0.0f, 1.0f, 0.0f);
+    f("pitchRelease", "Pitch release", 0.01f, 8.0f, 0.2f);
+    f("pitchAmount", "Pitch envelope semitones", -24.0f, 24.0f, 0.0f);
+    f("vibrato", "Vibrato cents", 0.0f, 200.0f, 0.0f);
+    f("tremolo", "Tremolo amount", 0.0f, 1.0f, 0.0f);
+    f("lfoToMod", "LFO modulation amount", 0.0f, 1.0f, 0.0f);
+    f("fxReverbDecay", "Reverb decay", 0.0f, 1.0f, 0.5f);
     return { p.begin(), p.end() };
 }
 FMEmancipationAudioProcessor::FMEmancipationAudioProcessor()
@@ -296,6 +316,9 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const double arpSwing = param("arpSwing");
     const double attack = param("attack");
     const double release = param("release");
+    const double ampDecay=param("ampDecay"), ampSustain=param("ampSustain");
+    const double pitchAttack=param("pitchAttack"),pitchDecay=param("pitchDecay"),pitchSustain=param("pitchSustain"),pitchRelease=param("pitchRelease"),pitchAmount=param("pitchAmount");
+    const double vibrato=param("vibrato"),tremoloAmount=param("tremolo"),lfoToMod=param("lfoToMod");
     const int filterMode = juce::jlimit(0, 6, (int)std::lround(param("filterMode")));
     cutoffSmoother.setTargetValue(param("filterCutoff"));
     resonanceSmoother.setTargetValue(param("filterResonance"));
@@ -583,10 +606,9 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         double mix = 0.0;
         for (auto& v : voices) {
             if (v.note < 0) continue;
-            const double step = 1.0 / (rate * (v.releasing ? release : attack));
-            v.envelope = v.releasing ? juce::jmax(0.0, v.envelope - step)
-                                     : juce::jmin(1.0, v.envelope + step);
-            if (v.releasing && v.envelope <= 0) { v = {}; continue; }
+            advanceAdsr(v.envelope,v.ampStage,v.ampReleaseStart,v.releasing,attack,ampDecay,ampSustain,release,rate);
+            if(v.releasing && v.ampStage==4){v={};continue;}
+            const double pitchEnv=advanceAdsr(v.pitchEnvelope,v.pitchStage,v.pitchReleaseStart,v.releasing,pitchAttack,pitchDecay,pitchSustain,pitchRelease,rate);
 
             // Each modulation envelope belongs to this voice: triggering
             // another note cannot restart a held note's envelope.
@@ -652,13 +674,13 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
             }
             const double mod = wave1 * lfoDepth;
             const double mod2 = wave2 * lfo2Depth;
-            const double pitchSemitones = envelopePitchSemitones
+            const double pitchSemitones = envelopePitchSemitones + pitchEnv*pitchAmount + wave1*vibrato/100.0
                                         + (lfoTarget == 1 ? 2.0 * mod : 0.0)
                                         + (lfo2Target == 1 ? 2.0 * mod2 : 0.0);
             const double pitchFactor = pitchSemitones != 0.0 ? std::pow(2.0, pitchSemitones / 12.0) : 1.0;
             const double tremolo = (lfoTarget == 2 ? 1.0 - 0.5 * lfoDepth + 0.5 * mod : 1.0)
-                                 * (lfo2Target == 2 ? 1.0 - 0.5 * lfo2Depth + 0.5 * mod2 : 1.0);
-            const double modulatedFMDepth = juce::jmax(0.0, depth * envelopeFM
+                                 * (lfo2Target == 2 ? 1.0 - 0.5 * lfo2Depth + 0.5 * mod2 : 1.0) * (1.0-0.5*tremoloAmount+0.5*tremoloAmount*wave1);
+            const double modulatedFMDepth = juce::jmax(0.0, depth * envelopeFM * (1.0+lfoToMod*wave1)
                 * (lfoTarget == 3 ? 1.0 + mod : 1.0)
                 * (lfo2Target == 3 ? 1.0 + mod2 : 1.0));
             const double modulatedAMDepth = juce::jlimit(0.0, 1.0, am + envelopeAM
@@ -895,7 +917,7 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
     const bool reverbOn = param("fxReverbEnabled") >= 0.5f;
     if (reverbOn) {
         juce::Reverb::Parameters settings;
-        settings.roomSize = param("fxReverbSize");
+        settings.roomSize = juce::jlimit(0.0f,1.0f,param("fxReverbSize") + 0.7f*(param("fxReverbDecay")-0.5f));
         settings.damping = param("fxReverbDamping");
         settings.width = param("fxReverbWidth");
         settings.wetLevel = reverbWet;
