@@ -898,7 +898,7 @@ public:
         for(int i=0;i<10;++i){auto& s=fx[(size_t)i];setupSlider(s,fxIds[i],juce::Slider::RotaryHorizontalVerticalDrag,true);s.setBounds(fxX[i]-45,(i==2||i==5||i>=8)?649:503,90,98);}
         const char* onIds[]={"fxChorusEnabled","fxDelayEnabled","fxReverbEnabled"};
         for(int i=0;i<3;++i){auto& b=fxOn[(size_t)i];configure(b);b.setComponentID(onIds[i]);b.setBounds(423+i*478,368,57,36);b.onClick=[this,i]{const char* ids[]={"fxChorusEnabled","fxDelayEnabled","fxReverbEnabled"};setParam(ids[i],value(ids[i])>=0.5f?0:1);repaint();};}
-        for(int i=0;i<6;++i){auto& h=categoryHits[(size_t)i];addAndMakeVisible(h);h.setBounds(51,357+i*73,249,67);h.onClick=[this,i]{const int c=catPage*6+i;if(c<13){category=c;presetPage=0;refresh();update();}};}
+        for(int i=0;i<6;++i){auto& h=categoryHits[(size_t)i];addAndMakeVisible(h);h.setBounds(51,357+i*61,249,59);h.onClick=[this,i]{const int c=catPage*6+i;if(c<13){category=c;presetPage=0;refresh();update();}};}
         for(int i=0;i<12;++i){auto& h=presetHits[(size_t)i];auto& fav=presetStars[(size_t)i];addAndMakeVisible(h);addAndMakeVisible(fav);const int x=337+(i%2)*423,y=419+(i/2)*53;h.setBounds(x,y,377,50);fav.setBounds(x+377,y,36,50);
             h.onClick=[this,i]{const int row=presetPage*12+i;if(row<(int)entries.size())load(entries[(size_t)row]);};
             fav.onClick=[this,i]{const int row=presetPage*12+i;if(row<(int)entries.size()&&entries[(size_t)row].factory>=0)toggleFavourite(entries[(size_t)row].factory);};}
@@ -1184,7 +1184,7 @@ private:
     }
 };
 FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor& p):juce::AudioProcessorEditor(&p),surface(std::make_unique<Surface>(p)){
-    addAndMakeVisible(*surface);setResizable(true,true);setResizeLimits(950,635,1504,1006);if(auto* c=getConstrainer())c->setFixedAspectRatio(1504.0/1006.0);
+    addAndMakeVisible(*surface);setResizable(true,true);setResizeLimits(780,522,1504,1006);if(auto* c=getConstrainer())c->setFixedAspectRatio(1504.0/1006.0);
     int w=1120; if(auto* display=juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())w=juce::jmin(w,juce::jmin(display->userArea.getWidth()-40,(int)((display->userArea.getHeight()-70)*1504.0/1006.0)));
     w=juce::jmax(780,w);setSize(w,juce::roundToInt(w*1006.0/1504.0));
 }
