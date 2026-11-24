@@ -5,11 +5,21 @@ public:
     explicit FMEmancipationAudioProcessorEditor(FMEmancipationAudioProcessor&);
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent&) override;
 private:
     void timerCallback() override;
     // Five real pages, plus contextual sub-navigation within complex modules.
     void selectTab(int index);
     void updateTabVisibility();
+    juce::String tr(const char* fr, const char* en) const;
+    void applyLanguage();
+    void refreshFactoryPresets();
+    juce::ComboBox language, factoryCategory;
+    juce::TextButton previousPreset {"<"}, nextPreset {">"}, favouritePreset {"+"};
+    std::array<juce::TextButton, 20> algorithmButtons;
+    std::array<juce::Slider, 6> fineControls, keyControls;
+    std::array<juce::Slider, 8> masterControls;
+    juce::TextButton renamePreset, deletePreset;
     int currentTab = 0;
     int currentEnvelopePage = 0;
     int currentEffectPage = 0;

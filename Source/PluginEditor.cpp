@@ -693,7 +693,8 @@ public:
         auto combo = [&](juce::ComboBox& box, const juce::String& id,
                          const juce::StringArray& values) {
             box.addItemList(values, 1);
-            box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
+            box.setComponentID(parameterID);
+        box.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
             box.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
             box.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
             addAndMakeVisible(box);
@@ -778,6 +779,7 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     : juce::AudioProcessorEditor(&p), processor(p)
 {
     auto add = [&](juce::Slider& s, const juce::String& id, bool vertical) {
+        s.setComponentID(id);
         s.setSliderStyle(vertical ? juce::Slider::LinearVertical : juce::Slider::RotaryHorizontalVerticalDrag);
         s.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 58, 20);
         s.setColour(juce::Slider::thumbColourId, juce::Colour(0xff78c9fa));
@@ -804,18 +806,18 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
             std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
                 processor.parameters, parameterID, box));
     };
-    lfoWaveform.addItemList({ "Sinus", "Triangle", "Scie", "Carree" }, 1);
+    lfoWaveform.addItemList({ "Sinus", "Triangle", "Scie", "Carrée" }, 1);
     lfoSync.addItemList({ "Libre", "Tempo" }, 1);
-    lfoDivision.addItemList({ "1 mesure", "1/2", "1/4", "1/8", "1/16", "1/8 pointee", "1/8 triolet" }, 1);
-    lfoDestination.addItemList({ "Desactive", "Vibrato", "Tremolo", "Profondeur FM", "Profondeur AM", "Matrice (6 OP)" }, 1);
+    lfoDivision.addItemList({ "1 mesure", "1/2", "1/4", "1/8", "1/16", "1/8 pointée", "1/8 triolet" }, 1);
+    lfoDestination.addItemList({ "Désactivé", "Vibrato", "Trémolo", "Profondeur FM", "Profondeur AM", "Matrice (6 OP)" }, 1);
     addLfoCombo(lfoWaveform, "lfoWave");
     addLfoCombo(lfoSync, "lfoSync");
     addLfoCombo(lfoDivision, "lfoDivision");
     addLfoCombo(lfoDestination, "lfoTarget");
-    lfo2Waveform.addItemList({ "Sinus", "Triangle", "Scie", "Carree" }, 1);
+    lfo2Waveform.addItemList({ "Sinus", "Triangle", "Scie", "Carrée" }, 1);
     lfo2Sync.addItemList({ "Libre", "Tempo" }, 1);
-    lfo2Division.addItemList({ "1 mesure", "1/2", "1/4", "1/8", "1/16", "1/8 pointee", "1/8 triolet" }, 1);
-    lfo2Destination.addItemList({ "Desactive", "Vibrato", "Tremolo", "Profondeur FM", "Profondeur AM", "Matrice (6 OP)" }, 1);
+    lfo2Division.addItemList({ "1 mesure", "1/2", "1/4", "1/8", "1/16", "1/8 pointée", "1/8 triolet" }, 1);
+    lfo2Destination.addItemList({ "Désactivé", "Vibrato", "Trémolo", "Profondeur FM", "Profondeur AM", "Matrice (6 OP)" }, 1);
     addLfoCombo(lfo2Waveform, "lfo2Wave");
     addLfoCombo(lfo2Sync, "lfo2Sync");
     addLfoCombo(lfo2Division, "lfo2Division");
@@ -894,16 +896,27 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     // components and parameter-attached controls have been constructed.
     for (int i = 0; i < 6; ++i) {
         add(ratios[i], "ratio" + juce::String(i), false);
+        add(fineControls[i], "fine" + juce::String(i), false);
+        add(keyControls[i], "keyLevel" + juce::String(i), false);
+        for (auto* slider : { &ratios[i], &fineControls[i], &keyControls[i], &feedbackControls[i], &velocityControls[i] }) {
+            slider->setSliderStyle(juce::Slider::LinearHorizontal);
+            slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 62, 20);
+        }
         add(levels[i], "level" + juce::String(i), true);
         add(feedbackControls[i], "feedback" + juce::String(i), false);
         add(velocityControls[i], "velocity" + juce::String(i), false);
+        for (auto* slider : { &feedbackControls[i], &velocityControls[i] }) {
+            slider->setSliderStyle(juce::Slider::LinearHorizontal);
+            slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 62, 20);
+        }
         feedbackControls[i].setTooltip("Feedback de l'operateur");
         velocityControls[i].setTooltip("Sensibilite a la velocite MIDI");
         auto& wave = waveformControls[i];
+        wave.setComponentID("wave" + juce::String(i));
         wave.addItem("Sinus", 1);
         wave.addItem("Triangle", 2);
         wave.addItem("Dent de scie", 3);
-        wave.addItem("Carree", 4);
+        wave.addItem("Carrée", 4);
         wave.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff174568));
         wave.setColour(juce::ComboBox::textColourId, juce::Colour(0xffc4e5ff));
         wave.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff77bfe6));
@@ -925,6 +938,7 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
         const int index = presetSelector.getSelectedId() - 1;
         if (index >= 0) {
             processor.setCurrentProgram(index);
+            refreshFactoryPresets();
             repaint();
         }
     };
@@ -999,7 +1013,7 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     presetSearch.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xff1b2a38));
     presetSearch.setColour(juce::TextEditor::textColourId, juce::Colour(0xffc4e5ff));
     presetSearch.setColour(juce::TextEditor::outlineColourId, juce::Colour(0xff77bfe6));
-    presetSearch.onTextChange = [this] { refreshUserPresets(); };
+    presetSearch.onTextChange = [this] { refreshUserPresets(); refreshFactoryPresets(); };
     addAndMakeVisible(presetSearch);
     clearPresetSearch.onClick = [this] { presetSearch.clear(); presetCategory.setSelectedId(1); refreshUserPresets(); };
     addAndMakeVisible(clearPresetSearch);
@@ -1051,12 +1065,122 @@ FMEmancipationAudioProcessorEditor::FMEmancipationAudioProcessorEditor(FMEmancip
     addChildComponent(*multimodeFilterPage);
     addChildComponent(*modulationEnvelopePage);
     addChildComponent(*arpeggiatorPage);
+    const char* masterIds[] = { "modAmount", "globalFeedback", "globalVelocity", "keyTrack", "transpose", "tune", "pan", "width" };
+    for (int i = 0; i < 8; ++i) add(masterControls[(size_t)i], masterIds[i], false);
+    for (int i = 0; i < 20; ++i) {
+        auto& button = algorithmButtons[(size_t)i];
+        button.setButtonText(juce::String(i + 1).paddedLeft('0', 2));
+        button.onClick = [this,i] { algorithm.setValue(i + 1, juce::sendNotificationSync); repaint(); };
+        addChildComponent(button);
+    }
+    language.addItem("FR", 1); language.addItem("EN", 2);
+    language.setSelectedId(processor.english.load() ? 2 : 1, juce::dontSendNotification);
+    language.onChange = [this] { processor.english.store(language.getSelectedId() == 2); applyLanguage(); };
+    addAndMakeVisible(language);
+    for (auto* b : { &previousPreset, &nextPreset, &favouritePreset, &renamePreset, &deletePreset }) addAndMakeVisible(*b);
+    previousPreset.onClick = [this] { processor.setCurrentProgram((processor.getCurrentProgram() + 99) % 100); refreshFactoryPresets(); repaint(); };
+    nextPreset.onClick = [this] { processor.setCurrentProgram((processor.getCurrentProgram() + 1) % 100); refreshFactoryPresets(); repaint(); };
+    favouritePreset.onClick = [this] { auto& f = processor.favourites[(size_t)processor.getCurrentProgram()]; f.store(!f.load()); refreshFactoryPresets(); repaint(); };
+    factoryCategory.onChange = [this] { refreshFactoryPresets(); };
+    addAndMakeVisible(factoryCategory);
+    renamePreset.onClick = [this] {
+        const int i = userPresetSelector.getSelectedId() - 1;
+        if (i < 0 || i >= filteredPresetFiles.size()) return;
+        const auto source = filteredPresetFiles[i];
+        auto chooser = std::make_shared<juce::FileChooser>(tr("Renommer le preset", "Rename preset"), source, "*.fme");
+        auto safe = juce::Component::SafePointer<FMEmancipationAudioProcessorEditor>(this);
+        chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+            [safe,chooser,source](const juce::FileChooser& fc) {
+                if (safe == nullptr || fc.getResult() == juce::File()) return;
+                auto target = fc.getResult().withFileExtension(".fme");
+                if (!target.exists() && source.moveFileTo(target)) safe->refreshUserPresets();
+            });
+    };
+    deletePreset.onClick = [this] {
+        const int i = userPresetSelector.getSelectedId() - 1;
+        if (i < 0 || i >= filteredPresetFiles.size()) return;
+        const auto source = filteredPresetFiles[i];
+        auto safe = juce::Component::SafePointer<FMEmancipationAudioProcessorEditor>(this);
+        juce::AlertWindow::showOkCancelBox(juce::AlertWindow::WarningIcon, "FM Emancipation",
+            tr("Supprimer ce preset utilisateur ?", "Delete this user preset?") + "\n" + source.getFileName(),
+            tr("Supprimer", "Delete"), tr("Annuler", "Cancel"), this,
+            juce::ModalCallbackFunction::create([safe,source](int result) {
+                if (safe != nullptr && result != 0 && source.moveToTrash()) safe->refreshUserPresets();
+            }));
+    };
+    addMouseListener(this, true);
+    applyLanguage();
     selectTab(0);
-    setSize(1496, 990);
+    setSize(1122, 742);
     setResizable(true, true);
-    setResizeLimits(900, 650, 2200, 1500);
+    setResizeLimits(1000, 660, 1496, 990);
+    if (auto* c = getConstrainer()) c->setFixedAspectRatio(1496.0 / 990.0);
     startTimerHz(20); // Refresh only the dual-LFO display area.
 }
+
+juce::String FMEmancipationAudioProcessorEditor::tr(const char* fr, const char* en) const {
+    return juce::String::fromUTF8(processor.english.load() ? en : fr);
+}
+void FMEmancipationAudioProcessorEditor::applyLanguage() {
+    const char* fr[] = { "01  OPÉRATEURS", "02  ALGORITHMES", "03  ENVELOPPES", "04  EFFETS", "05  PRESETS" };
+    const char* en[] = { "01  OPERATORS", "02  ALGORITHMS", "03  ENVELOPES", "04  EFFECTS", "05  PRESETS" };
+    for (int i=0; i<5; ++i) navigationTabs[(size_t)i].setButtonText(tr(fr[i],en[i]));
+    algorithmTabs[0].setButtonText(tr("ALGORITHMES FM / AM","FM / AM ALGORITHMS"));
+    algorithmTabs[1].setButtonText(tr("ARPÉGIATEUR MIDI","MIDI ARPEGGIATOR"));
+    envelopeTabs[0].setButtonText(tr("ADSR DES OPÉRATEURS","OPERATOR ADSR"));
+    effectTabs[1].setButtonText(tr("FILTRE MULTIMODE","MULTIMODE FILTER"));
+    savePresetButton.setButtonText(tr("ENREGISTRER","SAVE"));
+    loadPresetButton.setButtonText(tr("CHARGER","LOAD"));
+    clearPresetSearch.setButtonText(tr("EFFACER","CLEAR"));
+    renamePreset.setButtonText(tr("RENOMMER","RENAME"));
+    deletePreset.setButtonText(tr("SUPPRIMER","DELETE"));
+    presetSearch.setTextToShowWhenEmpty(tr("RECHERCHER UN PRESET…","SEARCH PRESETS…"),juce::Colours::lightgrey);
+    const int selected=juce::jmax(1,factoryCategory.getSelectedId());
+    factoryCategory.clear(juce::dontSendNotification);
+    const char* fcfr[]={"Tous les sons","Pianos électriques","Claviers et cloches","Basses","Leads","Nappes","Plucks et maillets","Cuivres et vents","Orgues et clavs","Effets sonores","FM-AM expérimental","Favoris"};
+    const char* fcen[]={"All sounds","Electric Pianos","Acoustic and Bell Keys","Basses","Leads","Pads","Plucks and Mallets","Brass and Winds","Organs and Clavs","Sound Effects","Experimental FM-AM","Favourites"};
+    for(int i=0;i<12;++i) factoryCategory.addItem(tr(fcfr[i],fcen[i]),i+1);
+    factoryCategory.setSelectedId(selected,juce::dontSendNotification);
+    refreshFactoryPresets();
+    repaint();
+}
+void FMEmancipationAudioProcessorEditor::refreshFactoryPresets() {
+    const int cat=factoryCategory.getSelectedId();
+    const auto query=presetSearch.getText().trim();
+    presetSelector.clear(juce::dontSendNotification);
+    for(int i=0;i<100;++i) {
+        if(cat>=2 && cat<=11 && i/10!=cat-2) continue;
+        if(cat==12 && !processor.favourites[(size_t)i].load()) continue;
+        const auto name=processor.getProgramName(i);
+        if(query.isNotEmpty() && !name.containsIgnoreCase(query)) continue;
+        presetSelector.addItem(name,i+1);
+    }
+    presetSelector.setSelectedId(processor.getCurrentProgram()+1,juce::dontSendNotification);
+    favouritePreset.setButtonText(processor.favourites[(size_t)processor.getCurrentProgram()].load() ? juce::String::fromUTF8("★") : juce::String::fromUTF8("☆"));
+}
+void FMEmancipationAudioProcessorEditor::mouseDown(const juce::MouseEvent& e) {
+    if (!e.mods.isPopupMenu()) return;
+    auto* c=e.eventComponent;
+    while(c != nullptr && c != this && c->getComponentID().isEmpty()) c=c->getParentComponent();
+    if(c==nullptr || c==this) return;
+    const auto id=c->getComponentID();
+    if(processor.parameters.getParameter(id)==nullptr) return;
+    juce::PopupMenu menu;
+    menu.addItem(1,tr("Apprendre MIDI CC","MIDI Learn"));
+    const int binding=processor.midiBinding(id);
+    menu.addItem(2,tr("Oublier MIDI CC","Remove MIDI mapping"),binding>=0);
+    if(binding>=0) menu.addItem(3,"CC "+juce::String(binding%128)+" / CH "+juce::String(binding/128+1),false);
+    menu.addItem(4,tr("Annuler apprentissage","Cancel learning"));
+    auto safe=juce::Component::SafePointer<FMEmancipationAudioProcessorEditor>(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(c),[safe,id](int result){
+        if(safe==nullptr) return;
+        if(result==1) safe->processor.armMidiLearn(id);
+        else if(result==2) safe->processor.clearMidiLearn(id);
+        else if(result==4) safe->processor.armMidiLearn({});
+        safe->repaint();
+    });
+}
+
 void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
 {
     const float sx = (float)getWidth() / 1496.0f;
@@ -1069,76 +1193,51 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
     const auto light = juce::Colour(0xffc4e5ff);
     g.fillAll(background);
 
-    // The navigation controls are real JUCE buttons placed on top of this
-    // background; the five header labels are no longer static paint.
     g.setColour(juce::Colours::whitesmoke);
-    g.setFont(juce::FontOptions(36.0f, juce::Font::bold));
-    g.drawText("FM", 36, 78, 62, 49, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(36.0f,juce::Font::bold));
+    g.drawText("FM",35,12,60,48,juce::Justification::centredLeft);
     g.setColour(accent);
-    g.drawText("Emancipation", 100, 78, 350, 49, juce::Justification::centredLeft);
-    g.setColour(juce::Colour(0xff93b2c9));
-    g.setFont(juce::FontOptions(13.0f));
-    g.drawText("SIX OPERATOR FM / AM SYNTHESIZER", 39, 129, 557, 22,
-               juce::Justification::left);
-    g.setColour(juce::Colour(0xff233542));
-    g.fillRoundedRectangle(1266.0f, 90.0f, 193.0f, 104.0f, 5.0f);
-    g.setColour(border);
-    g.drawRoundedRectangle(1266.0f, 90.0f, 193.0f, 104.0f, 5.0f, 1.0f);
+    g.drawText("Emancipation",98,12,400,48,juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(14.0f));
+    g.drawText("LIBERTY MUSIC SOFTWARE  /  FM × AM  /  20 "+tr("ALGORITHMES","ALGORITHMS"),35,60,960,20,juce::Justification::left);
+    const juce::Rectangle<float> lcd(35,88,1426,150);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff18486a),35,88,juce::Colour(0xff102c40),1461,238,false));
+    g.fillRoundedRectangle(lcd,5);
+    g.setColour(juce::Colour(0xff67a6cf));
+    g.drawRoundedRectangle(lcd,5,1.4f);
     g.setColour(light);
-    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    g.drawText("MASTER OUTPUT", 1283, 98, 157, 18, juce::Justification::centred);
-    g.setColour(juce::Colour(0xff344451));
-    g.drawHorizontalLine(174, 34.0f, 1248.0f);
-
-    static constexpr const char* pageTitles[] {
-        "SIX OPÉRATEURS", "ARCHITECTURE FM / AM", "ENVELOPPES ET MODULATION",
-        "EFFETS ET FILTRAGE", "BIBLIOTHÈQUE DE PRESETS"
-    };
-    static constexpr const char* pageDescriptions[] {
-        "Fréquence, forme d'onde, niveau, feedback et vélocité de chaque opérateur.",
-        "Vingt algorithmes de synthèse, profondeur FM, AM et arpégiateur musical.",
-        "Six enveloppes ADSR, deux enveloppes de modulation et deux LFO.",
-        "Chorus, delay stéréo, réverbération et filtre multimode.",
-        "Cent presets d'usine et bibliothèque de sons utilisateur."
-    };
-    g.setColour(accent);
-    g.setFont(juce::FontOptions(23.0f, juce::Font::bold));
-    g.drawText(pageTitles[currentTab], 38, 191, 1100, 32, juce::Justification::left);
-    g.setColour(juce::Colour(0xffa8bfd1));
+    g.setFont(juce::FontOptions(14.0f,juce::Font::bold));
+    g.drawText(tr("MÉMOIRE PROGRAMME","PROGRAM MEMORY"),58,100,440,24,juce::Justification::left);
+    g.setFont(juce::FontOptions(30.0f,juce::Font::bold));
+    g.drawText(processor.getProgramName(processor.getCurrentProgram()),58,133,520,45,juce::Justification::left);
+    const int ai=juce::jlimit(0,19,(int)std::lround(algorithm.getValue())-1);
+    g.setFont(juce::FontOptions(16.0f,juce::Font::bold));
+    g.drawText(tr("ALGORITHME","ALGORITHM"),630,104,225,25,juce::Justification::left);
+    g.setFont(juce::FontOptions(35.0f,juce::Font::bold));
+    g.drawText(juce::String(ai+1).paddedLeft('0',2),630,136,220,55,juce::Justification::left);
+    g.setFont(juce::FontOptions(12.0f,juce::Font::bold));
+    g.drawText(tr("NIVEAUX DES OPÉRATEURS","OPERATOR OUTPUT LEVELS"),1000,98,430,20,juce::Justification::centred);
+    for(int i=0;i<6;++i) g.drawText(juce::String(i+1),1004+i*70,117,62,16,juce::Justification::centred);
     g.setFont(juce::FontOptions(13.0f));
-    g.drawText(pageDescriptions[currentTab], 39, 224, 1150, 21, juce::Justification::left);
-
+    if(processor.midiLearnTarget()>=0)
+        g.drawText(tr("MIDI LEARN : bougez un contrôleur","MIDI LEARN: move a controller"),58,184,430,30,juce::Justification::left);
+    else
+        g.drawText(tr("SYNTHÉTISEUR NUMÉRIQUE POLYPHONIQUE","POLYPHONIC DIGITAL SYNTHESIZER"),58,184,430,30,juce::Justification::left);
     if (currentTab == 0) {
-        // All synthesis operator controls live exclusively on OPERATORS.
-        for (int i = 0; i < 6; ++i) {
-            const int x = 30 + i * 238;
+        for (int i=0;i<6;++i) {
+            const int x=35+i*238;
             g.setColour(panel);
-            g.fillRoundedRectangle((float)x, 278.0f, 238.0f, 603.0f, 5.0f);
-            g.setColour(border);
-            g.drawRoundedRectangle((float)x, 278.0f, 238.0f, 603.0f, 5.0f, 1.0f);
-            g.setColour(light);
-            g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
-            g.drawText("OP " + juce::String(i + 1), x + 20, 294, 128, 34, juce::Justification::left);
-            g.setColour(juce::Colour(0xff78c9fa));
-            g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-            g.drawText(i < 2 ? "CARRIER" : "FM MOD", x + 147, 302, 80, 20,
-                       juce::Justification::centred);
-            g.setColour(light);
-            g.setFont(juce::FontOptions(13.0f));
-            g.drawText("FREQUENCY RATIO", x + 19, 356, 200, 21, juce::Justification::centred);
-            g.drawText("OUTPUT LEVEL", x + 19, 515, 200, 22, juce::Justification::centred);
-            g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-            g.drawText("FEEDBACK", x + 10, 554, 80, 18, juce::Justification::centred);
-            g.drawText("LEVEL", x + 84, 554, 73, 18, juce::Justification::centred);
-            g.drawText("VELOCITY", x + 160, 554, 71, 18, juce::Justification::centred);
-            g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-            g.drawText("WAVEFORM", x + 24, 694, 190, 20, juce::Justification::centred);
-            g.setColour(juce::Colour(0xff385366));
-            g.drawHorizontalLine(770, (float)x + 15.0f, (float)x + 224.0f);
-            g.setColour(juce::Colour(0xff8cb5ce));
-            g.setFont(juce::FontOptions(12.0f));
-            g.drawText("OSCILLATOR " + juce::String(i + 1), x + 18, 787, 200, 24,
-                       juce::Justification::centred);
+            g.fillRoundedRectangle((float)x,309,230,550,4);
+            g.setColour(border);g.drawRoundedRectangle((float)x,309,230,550,4,1);
+            g.setColour(light);g.setFont(juce::FontOptions(24.0f,juce::Font::bold));
+            g.drawText("OP "+juce::String(i+1),x+15,328,95,35,juce::Justification::left);
+            const int type=FMEmancipationAudioProcessor::routeType(ai,i);
+            g.setColour(accent);g.setFont(juce::FontOptions(13.0f,juce::Font::bold));
+            g.drawText(type==0?tr("PORTEUR","CARRIER"):type==1?"FM":type==2?"AM":"FM+AM",x+115,330,100,28,juce::Justification::centredRight);
+            const char* fr[]={"Rapport de fréquence","Accord fin (ct)","Forme d’onde","Feedback local","Réponse vélocité","Suivi clavier"};
+            const char* en[]={"Frequency ratio","Fine tune (ct)","Waveform","Local feedback","Velocity response","Key level tracking"};
+            g.setColour(light);g.setFont(juce::FontOptions(15.0f));
+            for(int k=0;k<6;++k) g.drawText(tr(fr[k],en[k]),x+15,380+k*74,200,22,juce::Justification::left);
         }
     }
     else if (currentTab == 1 && currentAlgorithmPage == 0) {
@@ -1157,18 +1256,7 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawText("SCHÉMA DE CONNEXION DES SIX OPÉRATEURS", 78, 457, 1240, 33,
                    juce::Justification::left);
 
-        static constexpr int routes[20][6] {
-            {-1,0,1,2,3,4}, {-1,0,0,2,2,4},
-            {-1,0,1,-1,3,4}, {-1,0,-1,2,3,4},
-            {-1,0,0,0,3,4}, {-1,0,1,1,1,4},
-            {-1,0,-1,2,-1,4}, {-1,0,1,-1,3,-1},
-            {-1,0,-1,2,2,-1}, {-1,0,0,-1,3,-1},
-            {-1,-1,1,2,3,4}, {-1,-1,1,-1,3,4},
-            {-1,-1,1,1,-1,4}, {-1,-1,1,-1,3,-1},
-            {-1,-1,-1,2,3,4}, {-1,-1,-1,2,-1,4},
-            {-1,-1,-1,2,2,-1}, {-1,-1,-1,-1,3,4},
-            {-1,-1,-1,-1,3,-1}, {-1,-1,-1,-1,-1,-1}
-        };
+        const auto& routes = FMEmancipationAudioProcessor::routes;
         const int algorithmIndex = juce::jlimit(0, 19, (int)std::lround(
             processor.parameters.getRawParameterValue("algorithm")->load()) - 1);
         constexpr float cardX[6] { 235.0f, 655.0f, 1075.0f, 235.0f, 655.0f, 1075.0f };
@@ -1181,7 +1269,8 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
             const float dx0 = cardX[destination] + 78.0f, dy0 = cardY[destination] + 30.0f;
             wire.startNewSubPath(sx0, sy0);
             wire.quadraticTo((sx0 + dx0) * 0.5f, (sy0 + dy0) * 0.5f - 54.0f, dx0, dy0);
-            g.setColour(juce::Colour(0xff557fa0));
+            const int type = FMEmancipationAudioProcessor::routeType(algorithmIndex,op);
+            g.setColour(juce::Colour(type == 2 ? 0xffe9bc78 : type == 3 ? 0xffc499e8 : 0xff78c9fa));
             g.strokePath(wire, juce::PathStrokeType(2.5f));
         }
         for (int op = 0; op < 6; ++op) {
@@ -1195,7 +1284,7 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
             g.drawText("OP " + juce::String(op + 1), (int)cardX[op] + 15,
                        (int)cardY[op] + 6, 125, 29, juce::Justification::centred);
             g.setFont(juce::FontOptions(11.0f));
-            g.drawText(carrier ? "CARRIER" : "MODULATEUR",
+            g.drawText(carrier ? tr("PORTEUR","CARRIER") : tr("MODULATEUR","MODULATOR"),
                        (int)cardX[op] + 9, (int)cardY[op] + 36, 138, 18,
                        juce::Justification::centred);
         }
@@ -1350,12 +1439,20 @@ void FMEmancipationAudioProcessorEditor::paint(juce::Graphics& g)
     }
     g.setColour(juce::Colour(0xff8ca7bb));
     g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-    g.drawText("FM EMANCIPATION  •  BSM / LIBERTY  •  VST3",
-               38, 939, 1000, 24, juce::Justification::left);
+    g.setColour(juce::Colour(0xff222d35)); g.fillRoundedRectangle(35,901,1426,84,4);
+    g.setColour(border);g.drawRoundedRectangle(35,901,1426,84,4,1);
+    const char* fr[]={"FM","AM","Quantité","Feedback","Vélocité","Suivi clavier","Transpose","Accord","Pan","Largeur","Volume"};
+    const char* en[]={"FM","AM","Amount","Feedback","Velocity","Key track","Transpose","Tune","Pan","Width","Volume"};
+    g.setColour(light);g.setFont(juce::FontOptions(13.0f));
+    for(int i=0;i<11;++i) g.drawText(tr(fr[i],en[i]),45+i*128,903,120,18,juce::Justification::centred);
 }
 void FMEmancipationAudioProcessorEditor::timerCallback()
 {
     // Repaint only the two oscilloscopes while the modulation page is open.
+    for(int i=0;i<20;++i) algorithmButtons[(size_t)i].setColour(juce::TextButton::buttonColourId,
+        i+1==(int)std::lround(algorithm.getValue())?juce::Colour(0xff265a7c):juce::Colour(0xff303b47));
+    repaint(0,0,getWidth(),juce::roundToInt(getHeight()*0.25f));
+    if (currentTab == 0 || (currentTab == 1 && currentAlgorithmPage == 0)) repaint();
     if (currentTab != 2 || currentEnvelopePage != 1) return;
     const auto area = juce::Rectangle<float>(1300.0f, 786.0f, 165.0f, 124.0f)
         .transformedBy(juce::AffineTransform::scale((float)getWidth()/1496.0f,
@@ -1382,21 +1479,25 @@ void FMEmancipationAudioProcessorEditor::resized()
                                    .translated(x * sx, y * sy));
     };
     for (int i = 0; i < 5; ++i)
-        fit(navigationTabs[(size_t)i], 34 + i * 264, 10, 250, 48);
+        fit(navigationTabs[(size_t)i], 35 + i * 248, 250, 237, 43);
     for (int i = 0; i < 2; ++i) {
-        fit(algorithmTabs[(size_t)i], 50 + i * 297, 251, 283, 36);
-        fit(envelopeTabs[(size_t)i], 50 + i * 297, 251, 283, 36);
-        fit(effectTabs[(size_t)i], 50 + i * 297, 251, 283, 36);
+        fit(algorithmTabs[(size_t)i], 50 + i * 297, 298, 283, 30);
+        fit(envelopeTabs[(size_t)i], 50 + i * 297, 298, 283, 30);
+        fit(effectTabs[(size_t)i], 50 + i * 297, 298, 283, 30);
     }
-    fit(output, 1311, 119, 108, 77);
-    fit(algorithm, 86, 355, 200, 90);
-    fit(fmDepth, 305, 355, 194, 90);
-    fit(amDepth, 527, 355, 194, 90);
+    fit(language,1370,24,90,38);
+    fit(previousPreset,500,191,35,33); fit(nextPreset,540,191,35,33); fit(favouritePreset,580,191,35,33);
+    fit(output,1325,923,120,60); fit(fmDepth,45,923,120,60); fit(amDepth,173,923,120,60);
+    for(int i=0;i<8;++i) fit(masterControls[(size_t)i],301+i*128,923,120,60);
+    fit(algorithm,86,355,200,90);
+    for(int i=0;i<20;++i) fit(algorithmButtons[(size_t)i],320+(i%10)*109,350+(i/10)*43,100,36);
 
     // Factory and user presets have their own page, not the header.
-    fit(presetSelector, 80, 397, 590, 46);
-    fit(savePresetButton, 80, 448, 192, 44);
-    fit(loadPresetButton, 286, 448, 192, 44);
+    fit(factoryCategory,80,386,590,36);
+    fit(presetSelector,80,430,590,46);
+    fit(renamePreset,780,680,220,40); fit(deletePreset,1010,680,220,40);
+    fit(savePresetButton, 80, 486, 192, 44);
+    fit(loadPresetButton, 286, 486, 192, 44);
     fit(userPresetSelector, 781, 395, 631, 43);
     fit(presetSearch, 781, 453, 390, 38);
     fit(clearPresetSearch, 1182, 453, 104, 38);
@@ -1405,11 +1506,13 @@ void FMEmancipationAudioProcessorEditor::resized()
     // Direct oscillator controls on OPERATORS.
     for (int i = 0; i < 6; ++i) {
         const int x = 30 + 238 * i;
-        fit(ratios[(size_t)i], x + 26, 386, 186, 97);
-        fit(feedbackControls[(size_t)i], x + 18, 577, 62, 92);
-        fit(levels[(size_t)i], x + 88, 577, 62, 92);
-        fit(velocityControls[(size_t)i], x + 158, 577, 62, 92);
-        fit(waveformControls[(size_t)i], x + 24, 725, 190, 35);
+        fit(ratios[(size_t)i],x+20,407,200,29);
+        fit(fineControls[(size_t)i],x+20,481,200,29);
+        fit(waveformControls[(size_t)i],x+20,555,200,32);
+        fit(feedbackControls[(size_t)i],x+20,629,200,29);
+        fit(velocityControls[(size_t)i],x+20,703,200,29);
+        fit(keyControls[(size_t)i],x+20,777,200,29);
+        fit(levels[(size_t)i],1004+i*70,135,62,91);
         fit(opAttacks[(size_t)i], x + 9, 583, 52, 91);
         fit(opDecays[(size_t)i], x + 65, 583, 52, 91);
         fit(opSustains[(size_t)i], x + 121, 583, 52, 91);
@@ -1473,12 +1576,19 @@ void FMEmancipationAudioProcessorEditor::updateTabVisibility()
     const bool modulation = currentTab == 2 && currentEnvelopePage == 1;
     const bool presets = currentTab == 4;
     algorithm.setVisible(algorithms);
-    fmDepth.setVisible(algorithms);
-    amDepth.setVisible(algorithms);
+    fmDepth.setVisible(true);
+    amDepth.setVisible(true);
+    for(auto& b:algorithmButtons) b.setVisible(algorithms);
+    for(auto& s:masterControls) s.setVisible(true);
+    factoryCategory.setVisible(presets);
+    renamePreset.setVisible(presets);
+    deletePreset.setVisible(presets);
     output.setVisible(true);
     for (int i = 0; i < 6; ++i) {
         ratios[(size_t)i].setVisible(operators);
-        levels[(size_t)i].setVisible(operators);
+        levels[(size_t)i].setVisible(true);
+        fineControls[(size_t)i].setVisible(operators);
+        keyControls[(size_t)i].setVisible(operators);
         feedbackControls[(size_t)i].setVisible(operators);
         velocityControls[(size_t)i].setVisible(operators);
         waveformControls[(size_t)i].setVisible(operators);

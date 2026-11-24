@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.24)
-project(FMEmancipation VERSION 0.1.0 LANGUAGES C CXX)
+project(FMEmancipation VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.10 GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(JUCE)
 juce_add_plugin(FMEmancipation
- COMPANY_NAME "Liberty"
+ COMPANY_NAME "Liberty Music Software"
  BUNDLE_ID "com.bsm.fmemancipation"
  PLUGIN_MANUFACTURER_CODE BSM1
  PLUGIN_CODE FME1

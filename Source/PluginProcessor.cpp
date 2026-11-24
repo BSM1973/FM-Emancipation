@@ -38,6 +38,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
     f("fmDepth", "FM depth", 0, 10, 3);
     f("amDepth", "AM depth", 0, 1, 0.65f);
     f("output", "Output gain", 0, 1, 0.35f);
+    f("transpose", "Transpose", -24, 24, 0);
+    f("tune", "Fine tune cents", -100, 100, 0);
+    f("pan", "Pan", -1, 1, 0);
+    f("width", "Stereo width", 0, 2, 1);
+    f("modAmount", "Modulation amount", 0, 2, 1);
+    f("globalFeedback", "Global feedback multiplier", 0, 2, 1);
+    f("globalVelocity", "Velocity response", 0, 1, 1);
+    f("keyTrack", "Keyboard level tracking", -1, 1, 0);
     f("attack", "Attack", 0.001f, 5, 0.01f);
     f("release", "Release", 0.01f, 8, 0.35f);
     f("filterMode", "Filter type", 0.0f, 6.0f, 0.0f);
@@ -121,6 +129,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
         f("opRelease" + juce::String(i), "OP " + juce::String(i + 1) + " release", 0.01f, 8.0f, 0.35f);
     }
     for (int i = 0; i < 6; ++i) {
+        f("fine" + juce::String(i), "Operator fine tune cents", -100, 100, 0);
+        f("keyLevel" + juce::String(i), "Operator keyboard level tracking", -1, 1, 0);
         f("feedback" + juce::String(i), "Operator feedback", 0.0f, 1.0f, 0.0f);
         f("wave" + juce::String(i), "Operator waveform", 0.0f, 3.0f, 0.0f);
         f("velocity" + juce::String(i), "Operator velocity sensitivity", 0.0f, 1.0f, 0.0f);
@@ -142,7 +152,39 @@ juce::AudioProcessorValueTreeState::ParameterLayout FMEmancipationAudioProcessor
 }
 FMEmancipationAudioProcessor::FMEmancipationAudioProcessor()
     : juce::AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      parameters(*this, nullptr, "FMEmancipationState", makeParameters()) {}
+      parameters(*this, nullptr, "FMEmancipationState", makeParameters()) {
+    for (auto& b : midiBindings) b.store(-1);
+    for (auto& f : favourites) f.store(false);
+}
+void FMEmancipationAudioProcessor::armMidiLearn(const juce::String& id) {
+    auto* p = parameters.getParameter(id);
+    learnTarget.store(p != nullptr ? p->getParameterIndex() : -1);
+}
+void FMEmancipationAudioProcessor::clearMidiLearn(const juce::String& id) {
+    if (auto* p = parameters.getParameter(id)) {
+        const auto i = p->getParameterIndex();
+        if (i >= 0 && i < (int)midiBindings.size()) midiBindings[(size_t)i].store(-1);
+        if (learnTarget.load() == i) learnTarget.store(-1);
+    }
+}
+int FMEmancipationAudioProcessor::midiBinding(const juce::String& id) const {
+    if (auto* p = parameters.getParameter(id)) {
+        const auto i = p->getParameterIndex();
+        if (i >= 0 && i < (int)midiBindings.size()) return midiBindings[(size_t)i].load();
+    }
+    return -1;
+}
+void FMEmancipationAudioProcessor::applyMidiCC(const juce::MidiMessage& m) {
+    if (!m.isController() || m.getControllerNumber() >= 120) return;
+    const int code = (m.getChannel() - 1) * 128 + m.getControllerNumber();
+    const int target = learnTarget.exchange(-1);
+    if (target >= 0 && target < (int)midiBindings.size())
+        midiBindings[(size_t)target].store(code);
+    const auto& all = getParameters();
+    for (int i = 0; i < all.size() && i < (int)midiBindings.size(); ++i)
+        if (midiBindings[(size_t)i].load(std::memory_order_relaxed) == code)
+            all[i]->setValueNotifyingHost(m.getControllerValue() / 127.0f);
+}
 bool FMEmancipationAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const
 {
     return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
@@ -232,10 +274,19 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
 {
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
+    // CC updates are applied before the block's parameter snapshot.
+    for (const auto metadata : midi) applyMidiCC(metadata.getMessage());
     auto param = [&](const juce::String& key) { return parameters.getRawParameterValue(key)->load(); };
     const int algorithm = juce::jlimit(1, 20, (int)std::round(param("algorithm")));
-    const double depth = param("fmDepth");
-    const double am = param("amDepth");
+    const double depth = param("fmDepth") * param("modAmount");
+    const double am = juce::jlimit(0.0, 1.0, (double)param("amDepth") * param("modAmount"));
+    const double tuning = (std::round(param("transpose")) + param("tune") / 100.0) / 12.0;
+    const double pitchMultiplier = std::exp2(tuning);
+    const double globalFeedback = param("globalFeedback");
+    const double globalVelocity = param("globalVelocity");
+    const double keyTrack = param("keyTrack");
+    const double pan = param("pan");
+    const double stereoWidth = param("width");
     const double output = param("output");
     const bool arpEnabled = param("arpEnabled") >= 0.5f;
     const int arpMode = juce::jlimit(0, 4, (int)std::lround(param("arpMode")));
@@ -345,10 +396,12 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         opSustain[i] = param("opSustain" + juce::String(i));
         opRelease[i] = param("opRelease" + juce::String(i));
     }
-    double feedback[6], velocitySensitivity[6];
+    double feedback[6], velocitySensitivity[6], fineFactor[6], keyLevel[6];
     int waveType[6];
     for (int i = 0; i < 6; ++i) {
-        feedback[i] = param("feedback" + juce::String(i));
+        feedback[i] = param("feedback" + juce::String(i)) * globalFeedback;
+        fineFactor[i] = std::exp2(param("fine" + juce::String(i)) / 1200.0);
+        keyLevel[i] = param("keyLevel" + juce::String(i));
         velocitySensitivity[i] = param("velocity" + juce::String(i));
         waveType[i] = juce::jlimit(0, 3, (int)std::round(param("wave" + juce::String(i))));
     }
@@ -612,25 +665,13 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 + (lfoTarget == 4 ? 0.5 * mod : 0.0)
                 + (lfo2Target == 4 ? 0.5 * mod2 : 0.0));
             const double bend = pitchBendSemitones[(size_t)(v.midiChannel - 1)];
-            const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note) * std::pow(2.0, bend / 12.0) * pitchFactor;
+            const double hz = juce::MidiMessage::getMidiNoteInHertz(v.note) * std::pow(2.0, bend / 12.0) * pitchFactor * pitchMultiplier;
             double op[6] {};
             // Twenty explicit six-operator routings. Each row lists the
             // destination operator for OP1..OP6 (-1 means a carrier).
             // Modulation flows from higher operator indices to lower ones.
-            static constexpr int routes[20][6] = {
-                {-1,0,1,2,3,4}, {-1,0,0,2,2,4},
-                {-1,0,1,-1,3,4}, {-1,0,-1,2,3,4},
-                {-1,0,0,0,3,4}, {-1,0,1,1,1,4},
-                {-1,0,-1,2,-1,4}, {-1,0,1,-1,3,-1},
-                {-1,0,-1,2,2,-1}, {-1,0,0,-1,3,-1},
-                {-1,-1,1,2,3,4}, {-1,-1,1,-1,3,4},
-                {-1,-1,1,1,-1,4}, {-1,-1,1,-1,3,-1},
-                {-1,-1,-1,2,3,4}, {-1,-1,-1,2,-1,4},
-                {-1,-1,-1,2,2,-1}, {-1,-1,-1,-1,3,4},
-                {-1,-1,-1,-1,3,-1}, {-1,-1,-1,-1,-1,-1}
-            };
             const auto& route = routes[algorithm - 1];
-            double modulation[6] {};
+            double modulation[6] {}, amplitudeMod[6] {};
             double carrierSum = 0.0;
             int carrierCount = 0;
             for (int i = 5; i >= 0; --i) {
@@ -669,23 +710,29 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
                 const double opLevelFactor = juce::jmax(0.0, 1.0 - 0.5 * levelBaseline
                     + (matrixEnabled ? 0.5 * mod * matrixLevel[i] : 0.0)
                     + (matrix2Enabled ? 0.5 * mod2 * matrix2Level[i] : 0.0));
-                op[i] = wave * levels[i] * env * velocityGain * opLevelFactor;
+                const double tracking = juce::jlimit(0.0, 2.0, 1.0 + keyLevel[i] * (v.note - 60) / 48.0);
+                const double amFactor = juce::jlimit(0.0, 2.0, 1.0 + amplitudeMod[i] * modulatedAMDepth);
+                op[i] = wave * levels[i] * env * velocityGain * opLevelFactor * tracking * amFactor;
                 if (route[i] < 0) {
                     carrierSum += op[i];
                     ++carrierCount;
                 } else {
-                    modulation[route[i]] += op[i];
+                    const int type = routeType(algorithm - 1, i);
+                    if (type & 1) modulation[route[i]] += op[i];
+                    if (type & 2) amplitudeMod[route[i]] += op[i];
                 }
                 const double opPitchOffset = (matrixEnabled ? 2.0 * mod * matrixPitch[i] : 0.0)
                     + (matrix2Enabled ? 2.0 * mod2 * matrix2Pitch[i] : 0.0);
                 const double opPitchFactor = opPitchOffset != 0.0 ? std::pow(2.0, opPitchOffset / 12.0) : 1.0;
-                v.phase[i] += twoPi * hz * ratios[i] * opPitchFactor / rate;
+                v.phase[i] += twoPi * hz * ratios[i] * fineFactor[i] * opPitchFactor / rate;
                 if (v.phase[i] >= twoPi) v.phase[i] = std::fmod(v.phase[i], twoPi);
             }
             const double sum = carrierSum / juce::jmax(1, carrierCount);
-            const double amSource = 0.5 + 0.5 * op[5];
+            const double amSource = algorithm <= 10 ? 0.5 + 0.5 * op[5] : 1.0;
             double voiceSample = sum * ((1.0 - modulatedAMDepth) + modulatedAMDepth * amSource)
-                * tremolo * envelopeLevel * v.envelope * v.velocity;
+                * tremolo * envelopeLevel * v.envelope
+                * (1.0 - globalVelocity + globalVelocity * v.velocity)
+                * juce::jlimit(0.0, 2.0, 1.0 + keyTrack * (v.note - 60) / 48.0);
 
             if (filterMode != 0 && currentFilterMix > 0.0) {
                 // Bipolar modulation from both independent ADSRs; positive
@@ -864,15 +911,129 @@ void FMEmancipationAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer
         reverbEffect.reset();
     }
     reverbWasEnabled = reverbOn;
+    if (buffer.getNumChannels() > 1) {
+        auto* l = buffer.getWritePointer(0);
+        auto* r = buffer.getWritePointer(1);
+        const float lg = (float)(pan > 0 ? 1.0 - pan : 1.0);
+        const float rg = (float)(pan < 0 ? 1.0 + pan : 1.0);
+        for (int i = 0; i < buffer.getNumSamples(); ++i) {
+            const float mid = (l[i] + r[i]) * 0.5f;
+            const float side = (l[i] - r[i]) * 0.5f * (float)stereoWidth;
+            l[i] = (mid + side) * lg;
+            r[i] = (mid - side) * rg;
+        }
+    }
+}
+namespace {
+struct FactoryPatch { const char* name; int algorithm; float ratio[6]; };
+constexpr FactoryPatch factoryBank[] = {
+    { "Liberty Tines", 3, { 1.0f, 1.0f, 2.0f, 1.0f, 3.0f, 7.0f } },
+    { "Felt Circuit", 11, { 1.0f, 1.0f, 1.0f, 2.0f, 4.0f, 6.0f } },
+    { "Glass Suitcase", 8, { 1.0f, 2.0f, 3.0f, 1.0f, 7.0f, 9.0f } },
+    { "Neon Wurli", 7, { 1.0f, 1.0f, 2.0f, 3.0f, 1.0f, 5.0f } },
+    { "Midnight Reed", 12, { 1.0f, 1.0f, 3.0f, 2.0f, 2.0f, 6.0f } },
+    { "Silver Dyno", 14, { 1.0f, 2.0f, 1.0f, 4.0f, 5.0f, 8.0f } },
+    { "Velvet Rhodes", 20, { 1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f } },
+    { "Hammered Silk", 5, { 1.0f, 3.0f, 2.0f, 1.0f, 5.0f, 7.0f } },
+    { "Spark Piano", 10, { 1.0f, 2.0f, 4.0f, 1.0f, 3.0f, 6.0f } },
+    { "Broken Tines", 2, { 1.0f, 1.5f, 3.0f, 2.0f, 7.0f, 11.0f } },
+    { "Copper Grand", 8, { 1.0f, 1.0f, 2.0f, 1.0f, 3.0f, 5.0f } },
+    { "Crystal Chimes", 14, { 1.0f, 2.76f, 5.4f, 1.5f, 7.0f, 11.0f } },
+    { "Temple Bell", 1, { 1.0f, 1.41f, 2.76f, 4.08f, 6.8f, 9.0f } },
+    { "Porcelain Keys", 17, { 1.0f, 2.0f, 3.5f, 1.0f, 5.0f, 8.0f } },
+    { "Moon Carillon", 12, { 1.0f, 1.5f, 4.0f, 2.76f, 6.0f, 10.0f } },
+    { "Concert Glass", 20, { 1.0f, 2.0f, 3.0f, 4.0f, 6.0f, 8.0f } },
+    { "Clockwork Harp", 9, { 1.0f, 1.0f, 2.5f, 3.0f, 5.0f, 7.0f } },
+    { "Icy Celesta", 7, { 1.0f, 2.0f, 4.0f, 1.5f, 6.0f, 12.0f } },
+    { "Bronze Cathedral", 5, { 1.0f, 1.41f, 3.5f, 2.76f, 5.4f, 8.0f } },
+    { "Starlight Keys", 13, { 1.0f, 2.0f, 3.0f, 1.25f, 7.0f, 9.0f } },
+    { "Sub Foundation", 2, { 0.5f, 1.0f, 2.0f, 1.0f, 3.0f, 4.0f } },
+    { "Rubber Pulse", 5, { 1.0f, 1.0f, 2.0f, 1.0f, 2.0f, 3.0f } },
+    { "Acid Wire", 1, { 0.5f, 1.0f, 1.0f, 2.0f, 3.0f, 6.0f } },
+    { "Deep Octave", 7, { 0.5f, 0.5f, 1.0f, 1.0f, 2.0f, 4.0f } },
+    { "Fretless Steel", 11, { 1.0f, 2.0f, 1.0f, 1.5f, 3.0f, 4.0f } },
+    { "Analog Bite", 6, { 1.0f, 1.0f, 2.0f, 2.0f, 4.0f, 5.0f } },
+    { "Plucked Moogish", 12, { 0.5f, 1.0f, 3.0f, 1.0f, 2.0f, 7.0f } },
+    { "Digital Growl", 13, { 1.0f, 1.5f, 3.0f, 2.0f, 5.0f, 8.0f } },
+    { "Dark Current", 4, { 0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 7.0f } },
+    { "Resonant Slap", 10, { 1.0f, 2.0f, 1.0f, 3.0f, 5.0f, 7.0f } },
+    { "Laser Ribbon", 1, { 1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f } },
+    { "Silk Solo", 3, { 1.0f, 2.0f, 1.0f, 1.0f, 3.0f, 4.0f } },
+    { "Copper Scream", 6, { 1.0f, 1.0f, 3.0f, 2.0f, 5.0f, 7.0f } },
+    { "Orbit Lead", 10, { 1.0f, 2.0f, 3.0f, 1.0f, 4.0f, 6.0f } },
+    { "Electric Flute", 14, { 1.0f, 1.0f, 2.0f, 1.0f, 2.0f, 5.0f } },
+    { "Arc Beam", 5, { 1.0f, 3.0f, 5.0f, 2.0f, 7.0f, 11.0f } },
+    { "Mono Glass", 12, { 1.0f, 2.0f, 1.0f, 3.0f, 6.0f, 8.0f } },
+    { "Vocal Circuit", 11, { 1.0f, 1.0f, 4.0f, 2.0f, 5.0f, 9.0f } },
+    { "Bright Signal", 8, { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f } },
+    { "Solar Blade", 2, { 1.0f, 1.5f, 2.0f, 3.0f, 6.0f, 10.0f } },
+    { "Ocean Veil", 14, { 1.0f, 1.0f, 2.0f, 1.0f, 3.0f, 4.0f } },
+    { "Polar Aurora", 16, { 1.0f, 1.0f, 2.0f, 2.0f, 5.0f, 7.0f } },
+    { "Velvet Horizon", 18, { 1.0f, 1.0f, 1.0f, 2.0f, 3.0f, 5.0f } },
+    { "Cloud Choir", 20, { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f } },
+    { "Distant Strings", 12, { 1.0f, 1.0f, 2.0f, 1.0f, 2.0f, 4.0f } },
+    { "Slow Crystal", 15, { 1.0f, 1.5f, 2.76f, 1.0f, 4.0f, 7.0f } },
+    { "Blue Nebula", 17, { 1.0f, 2.0f, 1.0f, 3.0f, 5.0f, 8.0f } },
+    { "Frozen Lake", 19, { 1.0f, 1.0f, 2.0f, 4.0f, 7.0f, 9.0f } },
+    { "Warm Atmosphere", 8, { 1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f } },
+    { "Infinite Dusk", 13, { 1.0f, 1.0f, 1.5f, 2.0f, 3.0f, 6.0f } },
+    { "Wooden Steps", 7, { 1.0f, 1.0f, 3.0f, 2.0f, 5.0f, 7.0f } },
+    { "Bamboo Drops", 3, { 1.0f, 2.0f, 3.0f, 1.0f, 4.0f, 6.0f } },
+    { "Marimba Light", 9, { 1.0f, 4.0f, 1.0f, 2.0f, 3.0f, 7.0f } },
+    { "Glass Pluck", 12, { 1.0f, 2.76f, 4.0f, 1.0f, 5.0f, 8.0f } },
+    { "Steel Tongue", 16, { 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 7.0f } },
+    { "Soft Kalimba", 20, { 1.0f, 2.0f, 4.0f, 1.0f, 3.0f, 5.0f } },
+    { "Water Mallet", 5, { 1.0f, 1.41f, 2.0f, 3.0f, 6.0f, 9.0f } },
+    { "Clockwork Pizz", 8, { 1.0f, 2.0f, 3.0f, 1.0f, 5.0f, 6.0f } },
+    { "Hammer Spark", 13, { 1.0f, 3.0f, 5.0f, 2.0f, 7.0f, 9.0f } },
+    { "Hollow Sticks", 2, { 1.0f, 1.5f, 3.0f, 2.0f, 4.0f, 6.0f } },
+    { "Brass Horizon", 5, { 1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 6.0f } },
+    { "Golden Horn", 7, { 1.0f, 2.0f, 1.0f, 2.0f, 3.0f, 5.0f } },
+    { "Muted Trumpet", 11, { 1.0f, 1.0f, 3.0f, 1.0f, 4.0f, 7.0f } },
+    { "Reed Ensemble", 3, { 1.0f, 2.0f, 3.0f, 2.0f, 4.0f, 5.0f } },
+    { "Velvet Sax", 6, { 1.0f, 1.0f, 2.0f, 3.0f, 5.0f, 7.0f } },
+    { "Air Column", 14, { 1.0f, 1.0f, 1.0f, 2.0f, 4.0f, 6.0f } },
+    { "Silver Trombone", 2, { 1.0f, 2.0f, 3.0f, 1.0f, 5.0f, 8.0f } },
+    { "Low Tuba", 9, { 0.5f, 1.0f, 2.0f, 1.0f, 3.0f, 4.0f } },
+    { "Wind Circuit", 12, { 1.0f, 2.0f, 4.0f, 2.0f, 5.0f, 9.0f } },
+    { "Digital Oboe", 10, { 1.0f, 1.0f, 3.0f, 2.0f, 4.0f, 6.0f } },
+    { "Drawbar Dawn", 20, { 1.0f, 2.0f, 3.0f, 4.0f, 6.0f, 8.0f } },
+    { "Cathedral Pipes", 19, { 0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 6.0f } },
+    { "Percussive Organ", 18, { 1.0f, 2.0f, 3.0f, 1.0f, 5.0f, 8.0f } },
+    { "Jazz Rotor", 17, { 1.0f, 2.0f, 4.0f, 3.0f, 6.0f, 8.0f } },
+    { "Clav Wire", 8, { 1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 5.0f } },
+    { "Funky Teeth", 5, { 1.0f, 2.0f, 3.0f, 1.0f, 4.0f, 7.0f } },
+    { "Gospel Circuit", 16, { 0.5f, 1.0f, 2.0f, 4.0f, 5.0f, 8.0f } },
+    { "Soft Organ", 15, { 1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 6.0f } },
+    { "Metal Clav", 3, { 1.0f, 3.0f, 5.0f, 2.0f, 7.0f, 9.0f } },
+    { "Hollow Pipes", 14, { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 7.0f } },
+    { "Alien Beacon", 16, { 1.0f, 1.37f, 4.7f, 2.0f, 9.0f, 13.0f } },
+    { "Satellite Noise", 13, { 0.5f, 2.3f, 5.7f, 3.0f, 11.0f, 15.0f } },
+    { "Broken Machine", 1, { 1.0f, 1.41f, 3.7f, 6.0f, 9.0f, 12.0f } },
+    { "Metal Impact", 6, { 0.5f, 2.76f, 4.08f, 6.8f, 9.0f, 13.0f } },
+    { "Space Debris", 17, { 1.0f, 2.0f, 4.5f, 7.0f, 11.0f, 14.0f } },
+    { "Digital Insects", 19, { 1.0f, 1.23f, 2.83f, 5.1f, 8.0f, 15.0f } },
+    { "Falling Glass", 12, { 1.0f, 2.76f, 5.4f, 1.5f, 9.0f, 12.0f } },
+    { "Radio Pulse", 15, { 0.5f, 1.0f, 3.25f, 7.0f, 8.0f, 11.0f } },
+    { "Thunder Alloy", 5, { 0.5f, 1.41f, 3.0f, 5.0f, 7.0f, 10.0f } },
+    { "Signal Rain", 18, { 1.0f, 1.75f, 4.0f, 6.0f, 9.0f, 16.0f } },
+    { "Quantum Fold", 11, { 1.0f, 1.25f, 2.7f, 4.0f, 5.0f, 8.0f } },
+    { "AM Prism", 16, { 1.0f, 2.0f, 3.5f, 5.0f, 7.0f, 11.0f } },
+    { "Fractal Garden", 13, { 1.0f, 1.41f, 2.76f, 3.7f, 6.0f, 9.0f } },
+    { "Spectral Reef", 17, { 1.0f, 1.5f, 3.0f, 2.0f, 5.0f, 8.0f } },
+    { "Dual Gravity", 15, { 0.5f, 1.0f, 2.5f, 4.0f, 6.0f, 9.0f } },
+    { "Warped Bells", 12, { 1.0f, 2.76f, 5.4f, 1.0f, 7.0f, 12.0f } },
+    { "Electric Matter", 18, { 1.0f, 1.33f, 3.0f, 4.5f, 7.0f, 10.0f } },
+    { "Phase Mirage", 14, { 1.0f, 2.0f, 4.0f, 1.25f, 5.0f, 9.0f } },
+    { "AM Labyrinth", 19, { 1.0f, 1.5f, 2.3f, 5.0f, 8.0f, 13.0f } },
+    { "Emancipation", 20, { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f } }
+};
+static_assert(std::size(factoryBank) == 100, "Factory preset count");
 }
 const juce::String FMEmancipationAudioProcessor::getProgramName(int index)
 {
-    static const char* families[] = {
-        "Electric Piano", "Bell", "Bass", "Lead", "Pad",
-        "Pluck", "Organ", "Keys", "Percussion", "Texture"
-    };
     if (index < 0 || index >= 100) return {};
-    return juce::String(families[index / 10]) + " " + juce::String(index % 10 + 1).paddedLeft('0', 2);
+    return factoryBank[index].name;
 }
 void FMEmancipationAudioProcessor::setCurrentProgram(int index)
 {
@@ -885,9 +1046,12 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
         if (auto* parameter = parameters.getParameter(id))
             parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
     };
-    set("algorithm", (float)(1 + (family * 2 + variation) % 20));
+    // Reset every parameter first: factory patches never inherit edited state.
+    for (auto* p : getParameters()) p->setValueNotifyingHost(p->getDefaultValue());
+    const auto& patch = factoryBank[index];
+    set("algorithm", (float)patch.algorithm);
     set("fmDepth", 0.7f + brightness * 5.5f + (family % 3) * 0.5f);
-    set("amDepth", family == 1 || family == 8 ? 0.35f : 0.05f);
+    set("amDepth", family >= 8 ? 0.65f : family == 1 ? 0.22f : 0.08f);
     set("output", 0.3f);
     set("filterMode", 0.0f);
     set("filterCutoff", 9000.0f);
@@ -964,14 +1128,25 @@ void FMEmancipationAudioProcessor::setCurrentProgram(int index)
         set("lfo2OpFM" + op, 0.0f);
         set("lfo2OpFeedback" + op, 0.0f);
     }
+    set("fxChorusEnabled", family == 0 || family == 4 || family == 7 ? 1.0f : 0.0f);
+    set("fxChorusMix", 0.12f + brightness * 0.14f);
+    set("fxDelayEnabled", family == 3 || family == 9 ? 1.0f : 0.0f);
+    set("fxDelayMix", 0.1f + brightness * 0.12f);
+    set("fxReverbEnabled", family == 1 || family == 4 || family >= 8 ? 1.0f : 0.0f);
+    set("fxReverbMix", 0.12f + brightness * 0.2f);
+    set("lfoTarget", family == 4 || family == 6 ? 1.0f : 0.0f);
+    set("lfoDepth", family == 4 || family == 6 ? 0.06f + brightness * 0.1f : 0.0f);
     set("attack", family == 4 || family == 9 ? 0.5f + brightness : 0.005f);
     set("release", family == 4 || family == 9 ? 2.0f + brightness : 0.25f);
     for (int i = 0; i < 6; ++i) {
         const auto suffix = juce::String(i);
-        const float ratio = (float)(1 + ((family + i + variation / 3) % 8));
-        set("ratio" + suffix, family == 3 ? (float)(i + 1) : ratio);
+        set("ratio" + suffix, patch.ratio[i]);
+        set("fine" + suffix, family == 4 || family == 9 ? (i % 2 == 0 ? -1.0f : 1.0f) * (2.0f + variation) : 0.0f);
+        set("velocity" + suffix, family == 7 ? 0.1f : 0.45f + 0.08f * (i % 4));
+        set("feedback" + suffix, (family == 2 || family == 8 || family == 9) && i >= 3 ? 0.12f + 0.035f * variation : 0.0f);
+        set("wave" + suffix, family == 8 && i >= 3 ? (float)(1 + variation % 3) : 0.0f);
         set("level" + suffix, i == 0 ? 0.85f : 0.25f + 0.09f * (float)((i + variation) % 6));
-        const bool sustained = family == 4 || family == 6 || family == 9;
+        const bool sustained = family == 3 || family == 4 || family == 6 || family == 7 || family == 9;
         set("opAttack" + suffix, sustained ? 0.2f + 0.08f * i : 0.002f + 0.004f * i);
         set("opDecay" + suffix, 0.15f + 0.12f * i + 0.03f * variation);
         set("opSustain" + suffix, sustained ? 0.65f + 0.04f * (i % 3) : (family == 1 || family == 8 ? 0.0f : 0.3f));
@@ -982,6 +1157,15 @@ void FMEmancipationAudioProcessor::getStateInformation(juce::MemoryBlock& data)
 {
     auto state = parameters.copyState();
     state.setProperty("selectedFactoryProgram", currentProgram, nullptr);
+    state.setProperty("english", english.load(), nullptr);
+    juce::String fav;
+    for (const auto& f : favourites) fav += f.load() ? "1" : "0";
+    state.setProperty("favourites", fav, nullptr);
+    for (auto* p : getParameters())
+        if (auto* identified = dynamic_cast<juce::AudioProcessorParameterWithID*>(p)) {
+            const int binding = midiBinding(identified->paramID);
+            state.setProperty("midi_" + identified->paramID, binding, nullptr);
+        }
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, data);
 }
@@ -992,6 +1176,17 @@ void FMEmancipationAudioProcessor::setStateInformation(const void* data, int siz
         auto restored = juce::ValueTree::fromXml(*xml);
         currentProgram = juce::jlimit(0, 99, (int)restored.getProperty("selectedFactoryProgram", 0));
         parameters.replaceState(restored);
+        english.store((bool)restored.getProperty("english", false));
+        const auto fav = restored.getProperty("favourites").toString();
+        for (int i = 0; i < 100; ++i) favourites[(size_t)i].store(i < fav.length() && fav[i] == '1');
+        for (auto* p : getParameters())
+            if (auto* identified = dynamic_cast<juce::AudioProcessorParameterWithID*>(p)) {
+                const int i = p->getParameterIndex();
+                const int binding = (int)restored.getProperty("midi_" + identified->paramID, -1);
+                if (i >= 0 && i < (int)midiBindings.size())
+                    midiBindings[(size_t)i].store(binding >= 0 && binding < 2048 ? binding : -1);
+            }
+        learnTarget.store(-1);
     }
 }
 juce::AudioProcessorEditor* FMEmancipationAudioProcessor::createEditor()

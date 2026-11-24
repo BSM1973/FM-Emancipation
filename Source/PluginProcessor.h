@@ -24,6 +24,32 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
     juce::AudioProcessorValueTreeState parameters;
+    // MIDI CC bindings use stable parameter IDs in saved state.
+    void armMidiLearn(const juce::String& id);
+    void clearMidiLearn(const juce::String& id);
+    int midiBinding(const juce::String& id) const;
+    int midiLearnTarget() const noexcept { return learnTarget.load(); }
+    std::atomic<bool> english { false };
+    std::array<std::atomic<bool>, 100> favourites {};
+    inline static constexpr int routes[20][6] = {
+        {-1,0,1,2,3,4}, {-1,0,0,2,2,4},
+        {-1,0,1,-1,3,4}, {-1,0,-1,2,3,4},
+        {-1,0,0,0,3,4}, {-1,0,1,1,1,4},
+        {-1,0,-1,2,-1,4}, {-1,0,1,-1,3,-1},
+        {-1,0,-1,2,2,-1}, {-1,0,0,-1,3,-1},
+        {-1,-1,1,2,3,4}, {-1,-1,1,-1,3,4},
+        {-1,-1,1,1,-1,4}, {-1,-1,1,-1,3,-1},
+        {-1,-1,-1,2,3,4}, {-1,-1,-1,2,-1,4},
+        {-1,-1,-1,2,2,-1}, {-1,-1,-1,-1,3,4},
+        {-1,-1,-1,-1,3,-1}, {-1,-1,-1,-1,-1,-1}
+    };
+    // 1-10: FM, 11-15: mixed FM/AM, 16-19: AM, 20: additive.
+    static int routeType(int algorithmIndex, int op) noexcept {
+        if (routes[algorithmIndex][op] < 0) return 0;
+        if (algorithmIndex >= 15) return 2;
+        if (algorithmIndex >= 10 && op % 2 == 1) return 3;
+        return 1;
+    }
     int getArpNoteForDisplay() const noexcept
     {
         return arpDisplayNote.load(std::memory_order_relaxed);
@@ -82,6 +108,9 @@ private:
     std::array<double, 2> lfoPhases {}; // LFO 1 and LFO 2 run independently
     std::array<std::atomic<float>, 2> lfoDisplayPhases {}; // audio-to-UI snapshots, lock-free
     std::array<double, 16> pitchBendSemitones {};
+    std::array<std::atomic<int>, 256> midiBindings {};
+    std::atomic<int> learnTarget { -1 };
+    void applyMidiCC(const juce::MidiMessage&);
     int currentProgram = 0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FMEmancipationAudioProcessor)
 };
