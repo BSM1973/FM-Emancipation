@@ -5,12 +5,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.10 GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(JUCE)
+# Keep the existing VST3 identity; AU is macOS-only.
+set(FM_EMANCIPATION_FORMATS VST3)
+if(APPLE)
+  list(APPEND FM_EMANCIPATION_FORMATS AU)
+endif()
 juce_add_plugin(FMEmancipation
  COMPANY_NAME "Liberty Music Software"
  BUNDLE_ID "com.bsm.fmemancipation"
  PLUGIN_MANUFACTURER_CODE BSM1
  PLUGIN_CODE FME1
- FORMATS VST3
+ FORMATS ${FM_EMANCIPATION_FORMATS}
+ AU_MAIN_TYPE kAudioUnitType_MusicDevice
  PRODUCT_NAME "FM Emancipation"
  IS_SYNTH TRUE
  NEEDS_MIDI_INPUT TRUE
